@@ -57,7 +57,7 @@ process.on("message", function (message: {func: string, data: any}) {
 
             if (r instanceof Either) {
                 if (r.isRight()) {
-                    ok(r.get());
+                    ok(r.getRight());
                 } else {
                     error(r.getLeft());
                 }

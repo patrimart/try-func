@@ -2,7 +2,7 @@
 import {Either} from "./either";
 
 /**
- * 
+ * The Try function interface.
  */
 export interface TryFunction<T,U> extends Function {
     name: string;
@@ -12,7 +12,7 @@ export interface TryFunction<T,U> extends Function {
 }
 
 /**
- * 
+ * The Try module interface.
  */
 export interface Try<T> {
 
@@ -27,45 +27,49 @@ export interface Try<T> {
     andThenFork  <I,O> (func: TryFunction<I,O>): Try<T>;
 
     /**
-     * 
+     * Returns a Promise with the Either result.
      */
     get (): Promise<Either<T>>;
 
     /**
-     * 
+     * Returns a Promise with the right-biased Either, or executes
+     * the given function.
      */
     getOrElse (func: TryFunction<void,T>): Promise<Either<T>>;
 
     /**
-     * 
+     * Returns a Promise with the right-biased Either, or executes
+     * the given function in a forked process.
      */
     getOrElseFork (func: TryFunction<void,T>): Promise<Either<T>>;
 
     /**
-     * 
+     * Returns a Promise with the right-biased Either, or returns
+     * a left-biased Either with the given Error.
      */
     getOrThrow (err?: Error): Promise<Either<T>>;
 
     /**
-     * 
+     * Returns the Try as a curried function, with the option to
+     * pass an initial value.
      */
     toCurried (): (initialValue?: any) => Promise<Either<T>>;
 }
 
 /**
- * 
+ * The Try module.
  */
 export namespace Try {
 
     /**
-     * 
+     * Runs the given function.
      */
     export function of <T> (func: TryFunction<void,any>): Try<T> {
         return new TryClass <T> ({isFork: false, func}, _getCallerFile());
     }
 
     /**
-     * 
+     * Runs the given function in a forked child process.
      */
     export function  ofFork <T> (func: TryFunction<void,any>): Try<T> {
         return new TryClass <T> ({isFork: true, func}, _getCallerFile());
@@ -203,7 +207,7 @@ class TryClass<T> implements Try<T> {
 
                         if (r instanceof Either) {
                             if (r.isRight()) {
-                                ok(r.get());
+                                ok(r.getRight());
                             } else {
                                 error(r.getLeft());
                             }

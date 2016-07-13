@@ -35,7 +35,7 @@ process.on("message", function (message) {
         if (r !== undefined) {
             if (r instanceof Either_1.Either) {
                 if (r.isRight()) {
-                    ok(r.get());
+                    ok(r.getRight());
                 }
                 else {
                     error(r.getLeft());

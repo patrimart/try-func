@@ -105,7 +105,7 @@ var TryClass = (function () {
                     if (r !== undefined) {
                         if (r instanceof either_1.Either) {
                             if (r.isRight()) {
-                                ok(r.get());
+                                ok(r.getRight());
                             }
                             else {
                                 error(r.getLeft());
