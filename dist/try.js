@@ -100,10 +100,18 @@ var TryClass = (function () {
                 resolve(either_1.Either.Left(e));
             };
             try {
-                if (!func.isFork) {
+                if (!func.isFork || !!process.env.__TRYJS_ROOT_DIR) {
                     var r = func.func.call({ ok: ok, error: error }, accumulator);
                     if (r !== undefined) {
-                        if (r instanceof Promise) {
+                        if (r instanceof either_1.Either) {
+                            if (r.isRight()) {
+                                ok(r.get());
+                            }
+                            else {
+                                error(r.getLeft());
+                            }
+                        }
+                        else if (r instanceof Promise) {
                             r.then(function (v) { return ok(v); }).catch(function (e) { return error(e); });
                         }
                         else {

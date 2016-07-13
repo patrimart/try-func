@@ -17,12 +17,12 @@ export interface TryFunction<T,U> extends Function {
 export interface Try<T> {
 
     /**
-     * 
+     * And then, run the given function.
      */
     andThen  <I,O> (func: TryFunction<I,O>): Try<T>;
 
     /**
-     * 
+     * And then, fork a new process, run the given function.
      */
     andThenFork  <I,O> (func: TryFunction<I,O>): Try<T>;
 
@@ -193,13 +193,21 @@ class TryClass<T> implements Try<T> {
             
             try {
 
-                if (! func.isFork) {
+                // If not fork, run the script in this thread.
+                // If process.env.__TRYJS_ROOT_DIR, already in child process.
+                if (! func.isFork || !! process.env.__TRYJS_ROOT_DIR) {
 
                     const r = func.func.call({ok, error}, accumulator);
 
                     if (r !== undefined) {
 
-                        if (r instanceof Promise) {
+                        if (r instanceof Either) {
+                            if (r.isRight()) {
+                                ok(r.get());
+                            } else {
+                                error(r.getLeft());
+                            }
+                        } else if (r instanceof Promise) {
                             r.then((v: T) => ok(v)).catch((e: Error) => error(e))
                         } else {
                             ok(r);
@@ -208,9 +216,11 @@ class TryClass<T> implements Try<T> {
                     return;
                 }
 
+                // Else fork, run the script in a forked child process.
                 if (! this._child) {
+
                     this._child = child_process.fork(`${__dirname}/child_context`, ["special"], { env: { __TRYJS_ROOT_DIR: this._callerFileName}});
-                    this._child.on("message", (m: [string, any]) => {
+                    this._child.on("message", (m: [string, any, boolean]) => {
                         if (m[0]) {
                             error(new Error(m[0]));
                         } else {
@@ -241,6 +251,9 @@ class TryClass<T> implements Try<T> {
 
 declare var Error: any;
 
+/**
+ * A hack of the Error object to get a function caller's __filename.
+ */
 function _getCallerFile() {
 
     let originalFunc = Error.prepareStackTrace;
@@ -264,39 +277,3 @@ function _getCallerFile() {
 
     return callerfile;
 }
-
-// function MyError () {
-//     Error.call(this);
-// }
-
-// MyError.prototype = Object.create(Error.prototype);
-// MyError.prototype.constructor = MyError;
-
-// MyError.prepareStackTrace = function (err: any, stack: any) { return stack; };
-
-// class MyError extends Error {
-
-//     public static prepareStackTrace (err: any, stack: any) { return stack; };
-
-//     public name = "MyError";
-//     constructor (public message?: string) {
-//         super(message);
-//     }
-// }
-
-// function _getCallerFile() {
-
-//     let callerfile: string;
-//     try {
-//         let err = new MyError();
-//         let currentfile: string = err.stack.shift().getFileName();
-
-//         while (err.stack.length) {
-//             callerfile = err.stack.shift().getFileName();
-//             if(currentfile !== callerfile) break;
-//         }
-//     } catch (e) {}
-
-//     return callerfile;
-// }
-

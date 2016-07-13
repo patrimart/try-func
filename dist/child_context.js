@@ -1,14 +1,15 @@
+"use strict";
 var path = require("path");
 var vm = require('vm');
+var Either_1 = require("./Either");
 var ___compiledScriptCache___ = {};
 var ___origRequire___ = require;
 var ___that___ = this;
 function ok(r) {
-    process.send([null, r]);
+    process.send([null, r, true]);
 }
 function error(e) {
-    process.send([e.stack, null]);
-    process.exit();
+    process.send([e.stack, null, true]);
 }
 global.require = function () {
     arguments[0] = path.resolve(path.parse(process.env.__TRYJS_ROOT_DIR).dir, arguments[0]);
@@ -17,7 +18,7 @@ global.require = function () {
 global.ok = ok;
 global.error = error;
 process.on("uncaughtException", function (e) {
-    process.send([e.stack, null]);
+    process.send([e.stack, null, false]);
     process.exit();
 });
 process.on("message", function (message) {
@@ -29,14 +30,27 @@ process.on("message", function (message) {
         script = new vm.Script("((" + message.func + ")(" + JSON.stringify(message.data) + "))", { filename: 'try-js-fork.vm' });
         ___compiledScriptCache___[hash] = script;
     }
-    var r = script.runInNewContext(global);
-    if (r !== undefined) {
-        if (r instanceof Promise) {
-            r.then(function (v) { return ok(v); }).catch(function (e) { return error(e); });
+    try {
+        var r = script.runInNewContext(global);
+        if (r !== undefined) {
+            if (r instanceof Either_1.Either) {
+                if (r.isRight()) {
+                    ok(r.get());
+                }
+                else {
+                    error(r.getLeft());
+                }
+            }
+            else if (r instanceof Promise) {
+                r.then(function (v) { return ok(v); }).catch(function (e) { return error(e); });
+            }
+            else {
+                ok(r);
+            }
         }
-        else {
-            ok(r);
-        }
+    }
+    catch (err) {
+        error(err);
     }
 });
 function ___hash___(str) {
