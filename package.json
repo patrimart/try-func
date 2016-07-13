@@ -1,0 +1,29 @@
+{
+  "name": "try-js",
+  "version": "0.2.2",
+  "description": "Improved JavaScript error handling.",
+  "main": "dist/index.js",
+  "typings": "dist",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "mocha test/test.js"
+  },
+  "keywords": [
+    "try",
+    "catch",
+    "either",
+    "errors",
+    "error",
+    "exceptions",
+    "functional",
+    "handling",
+    "monads"
+  ],
+  "author": "Patrick Martin",
+  "license": "ISC",
+  "dependencies": {
+    "generic-pool": "^2.4.2"
+  }
+}
