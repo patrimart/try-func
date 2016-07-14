@@ -6,40 +6,35 @@ var ___compiledScriptCache___ = {};
 var ___origRequire___ = require;
 var ___that___ = this;
 function ok(r) {
-    process.send([null, r, true]);
+    process.send([null, r, false]);
 }
 function error(e) {
-    process.send([e.stack, null, true]);
+    process.send([e.stack, null, false]);
 }
-global.require = function () {
-    arguments[0] = path.resolve(path.parse(process.env.__TRYJS_ROOT_DIR).dir, arguments[0]);
-    return ___origRequire___.apply(___that___, arguments);
-};
 global.ok = ok;
 global.error = error;
 process.on("uncaughtException", function (e) {
-    process.send([e.stack, null, false]);
+    process.send([e.stack, null, true]);
     process.exit();
 });
 process.on("message", function (message) {
-    var code = "((" + message.func + ")(" + JSON.stringify(message.data) + "))", hash = ___hash___(code), script;
-    if (___compiledScriptCache___[hash]) {
-        script = ___compiledScriptCache___[hash];
-    }
-    else {
-        script = new vm.Script("((" + message.func + ")(" + JSON.stringify(message.data) + "))", { filename: 'try-js-fork.vm' });
-        ___compiledScriptCache___[hash] = script;
-    }
     try {
+        var code = "((" + message.func + ")(" + JSON.stringify(message.data) + "))", hash = ___hash___(code), script = void 0;
+        if (___compiledScriptCache___[hash]) {
+            script = ___compiledScriptCache___[hash];
+        }
+        else {
+            script = new vm.Script(code, { filename: 'try-js-fork.vm' });
+            ___compiledScriptCache___[hash] = script;
+        }
+        global.require = function () {
+            arguments[0] = path.resolve(path.parse(message.callerFileName).dir, arguments[0]);
+            return ___origRequire___.apply(___that___, arguments);
+        };
         var r = script.runInNewContext(global);
         if (r !== undefined) {
             if (r instanceof Either_1.Either) {
-                if (r.isRight()) {
-                    ok(r.getRight());
-                }
-                else {
-                    error(r.getLeft());
-                }
+                (r.isRight() && ok || error)(r.get());
             }
             else if (r instanceof Promise) {
                 r.then(function (v) { return ok(v); }).catch(function (e) { return error(e); });

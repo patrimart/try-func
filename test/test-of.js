@@ -1,6 +1,5 @@
 var Either = require('../dist/index').Either;
 var Try = require('../dist/index').Try;
-var Try2 = require('../dist/try').Try2;
 
 var Double = require('./utils/math').Double;
 
@@ -17,7 +16,7 @@ Try.ofFork(function () {
 
 })
 .get()
-.then(result => console.log('RESULT =>', result));
+.then(result => console.log('RESULT 1 =>', result));
 
 Try.ofFork(() => {
 
@@ -42,6 +41,6 @@ Try.ofFork(() => {
     return 'abc'+ v;
 })
 .get()
-.then(result => console.log('RESULT =>', result));
+.then(result => console.log('RESULT 2 =>', result));
 
 console.log('End Test');

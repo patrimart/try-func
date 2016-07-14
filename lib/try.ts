@@ -1,5 +1,6 @@
 
 import {Either} from "./either";
+import * as Pool from "./child_context_pool";
 
 /**
  * The Try function interface.
@@ -184,33 +185,29 @@ class TryClass<T> implements Try<T> {
             resolve(Either.Right<T>(accumulator));
             return;
         }
+        
+        const ok = (r: any) => {
+            this._executeFuncStack(resolve, r);
+        }
+
+        const error = (e: Error) => {
+            resolve(Either.Left<T>(e));
+        }
 
         ((func: IFuncWrapper<any,any>, acc: any) => {
 
-            const ok = (r: any) => {
-                this._executeFuncStack(resolve, r);
-            }
-
-            const error = (e: Error) => {
-                resolve(Either.Left<T>(e));
-            }
-            
             try {
 
                 // If not fork, run the script in this thread.
-                // If process.env.__TRYJS_ROOT_DIR, already in child process.
-                if (! func.isFork || !! process.env.__TRYJS_ROOT_DIR) {
+                // If process.env.__TRYJS_IN_FORK, already in child process.
+                if (! func.isFork || !! process.env.__TRYJS_IN_FORK) {
 
                     const r = func.func.call({ok, error}, accumulator);
 
                     if (r !== undefined) {
 
                         if (r instanceof Either) {
-                            if (r.isRight()) {
-                                ok(r.getRight());
-                            } else {
-                                error(r.getLeft());
-                            }
+                            (r.isRight() && ok || error)(r.get());
                         } else if (r instanceof Promise) {
                             r.then((v: T) => ok(v)).catch((e: Error) => error(e))
                         } else {
@@ -220,32 +217,23 @@ class TryClass<T> implements Try<T> {
                     return;
                 }
 
-                // Else fork, run the script in a forked child process.
-                if (! this._child) {
+                Pool.acquire()
+                    .then((cp: Pool.IChildProcess) => {
+            
+                        cp.addListener ((r: Either<T>) => {
+                            (cp.isDestroyable && Pool.destroy || Pool.release)(cp);
+                            (r.isRight() && ok || error)(r.get());
+                        });
 
-                    this._child = child_process.fork(`${__dirname}/child_context`, ["special"], { env: { __TRYJS_ROOT_DIR: this._callerFileName}});
-                    this._child.on("message", (m: [string, any, boolean]) => {
-                        if (m[0]) {
-                            error(new Error(m[0]));
-                        } else {
-                            ok(m[1]);
-                        }
+                        cp.send(func.func, acc, this._callerFileName);
+                    })
+                    .catch(err => {
+                        throw err;
                     });
-                    this._child.on("error", (err: Error) => {
-                        error(err);
-                        this._child.kill();
-                        this._child = null;
-                    });
-                    this._child.on("exit", () => {
-                        this._child = null;
-                    });
-                }
-
-                this._child.send({func: func.func.toString(), data: acc});
 
             } catch (err) {
                 console.log(err, err.stack);
-                error(err);
+                resolve(Either.Left<T>(err));
             }
 
         })(this._funcStack.shift(), accumulator);

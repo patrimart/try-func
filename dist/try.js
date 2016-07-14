@@ -1,5 +1,6 @@
 "use strict";
 var either_1 = require("./either");
+var Pool = require("./child_context_pool");
 var Try;
 (function (Try) {
     function of(func) {
@@ -11,7 +12,6 @@ var Try;
     }
     Try.ofFork = ofFork;
 })(Try = exports.Try || (exports.Try = {}));
-var child_process = require("child_process");
 var TryClass = (function () {
     function TryClass(func, callerFileName) {
         this._funcStack = [];
@@ -92,24 +92,19 @@ var TryClass = (function () {
             resolve(either_1.Either.Right(accumulator));
             return;
         }
+        var ok = function (r) {
+            _this._executeFuncStack(resolve, r);
+        };
+        var error = function (e) {
+            resolve(either_1.Either.Left(e));
+        };
         (function (func, acc) {
-            var ok = function (r) {
-                _this._executeFuncStack(resolve, r);
-            };
-            var error = function (e) {
-                resolve(either_1.Either.Left(e));
-            };
             try {
-                if (!func.isFork || !!process.env.__TRYJS_ROOT_DIR) {
+                if (!func.isFork || !!process.env.__TRYJS_IN_FORK) {
                     var r = func.func.call({ ok: ok, error: error }, accumulator);
                     if (r !== undefined) {
                         if (r instanceof either_1.Either) {
-                            if (r.isRight()) {
-                                ok(r.getRight());
-                            }
-                            else {
-                                error(r.getLeft());
-                            }
+                            (r.isRight() && ok || error)(r.get());
                         }
                         else if (r instanceof Promise) {
                             r.then(function (v) { return ok(v); }).catch(function (e) { return error(e); });
@@ -120,30 +115,21 @@ var TryClass = (function () {
                     }
                     return;
                 }
-                if (!_this._child) {
-                    _this._child = child_process.fork(__dirname + "/child_context", ["special"], { env: { __TRYJS_ROOT_DIR: _this._callerFileName } });
-                    _this._child.on("message", function (m) {
-                        if (m[0]) {
-                            error(new Error(m[0]));
-                        }
-                        else {
-                            ok(m[1]);
-                        }
+                Pool.acquire()
+                    .then(function (cp) {
+                    cp.addListener(function (r) {
+                        (cp.isDestroyable && Pool.destroy || Pool.release)(cp);
+                        (r.isRight() && ok || error)(r.get());
                     });
-                    _this._child.on("error", function (err) {
-                        error(err);
-                        _this._child.kill();
-                        _this._child = null;
-                    });
-                    _this._child.on("exit", function () {
-                        _this._child = null;
-                    });
-                }
-                _this._child.send({ func: func.func.toString(), data: acc });
+                    cp.send(func.func, acc, _this._callerFileName);
+                })
+                    .catch(function (err) {
+                    throw err;
+                });
             }
             catch (err) {
                 console.log(err, err.stack);
-                error(err);
+                resolve(either_1.Either.Left(err));
             }
         })(this._funcStack.shift(), accumulator);
     };
