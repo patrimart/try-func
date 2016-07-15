@@ -17,7 +17,7 @@ Try.ofFork(() => {
         Success('OK Result '+ Double(1));
     }, 1000);
 
-    // return 'OK Result '+ Double(2);
+    return 'OK Result '+ Double(2);
 })
 .get()
 .then(result => console.log('RESULT 1 =>', result));

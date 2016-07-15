@@ -198,7 +198,6 @@ class TryClass<T> implements Try<T> {
                 if (! func.isFork || !! process.env.__TRYJS_IN_FORK) {
 
                     const r = func.func.call({Success, Failure}, accumulator);
-
                     if (r !== undefined) {
 
                         if (r instanceof Either) {
@@ -208,10 +207,8 @@ class TryClass<T> implements Try<T> {
                         } else {
                             Success(r);
                         }
-
-                        Success = Failure = function () {};
                     }
-
+                    Success = Failure = function () {};
                     return;
                 }
 
@@ -221,6 +218,7 @@ class TryClass<T> implements Try<T> {
                         cp.addListener ((r: Either<T>) => {
                             (cp.isDestroyable && Pool.destroy || Pool.release)(cp);
                             (r.isRight() && Success || Failure)(r.get());
+                            Success = Failure = function () {};
                         });
 
                         cp.send(func.func, acc, this._callerFileName);
