@@ -7,16 +7,17 @@
         "noImplicitAny": true,
         "removeComments": true,
         "preserveConstEnums": true,
-        "outDir": "./dist",
+        "outDir": "./lib",
         "sourceMap": true,
         "target": "es5"
     },
     "files": [
         "./typings/index.d.ts",
-        "./lib/try.ts",
-        "./lib/child_context_pool.ts",
-        "./lib/child_context.ts",
-        "./lib/either.ts",
-        "./lib/index.ts"
+        "./src/try.ts",
+        "./src/libs/child_context_pool.ts",
+        "./src/libs/child_context.ts",
+        "./src/libs/log.ts",
+        "./src/either.ts",
+        "./src/index.ts"
     ]
 }

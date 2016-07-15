@@ -1,5 +1,5 @@
-import { TryFunction } from "./Try";
-import { Either } from "./Either";
+import { TryFunction } from "../Try";
+import Either from "../Either";
 export interface IChildProcess {
     isDestroyable: boolean;
     addListener<T>(f: (r: Either<T>) => void): void;

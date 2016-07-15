@@ -1,6 +1,6 @@
 
-import {Either} from "./either";
-import * as Pool from "./child_context_pool";
+import Either from "./either";
+import * as log from "./libs/log";
 
 /**
  * The Try function interface.
@@ -15,7 +15,7 @@ export interface TryFunction<T,U> extends Function {
 /**
  * The Try module interface.
  */
-export interface Try<T> {
+export interface Try <T> {
 
     /**
      * And then, run the given function.
@@ -65,15 +65,15 @@ export namespace Try {
     /**
      * Runs the given function.
      */
-    export function of <T> (func: TryFunction<void,any>): Try<T> {
-        return new TryClass <T> ({isFork: false, func}, _getCallerFile());
+    export function of <T> (func: TryFunction<void,any>, initialValue?: any): Try<T> {
+        return new TryClass <T> ({isFork: false, func}, _getCallerFile(), initialValue);
     }
 
     /**
      * Runs the given function in a forked child process.
      */
-    export function  ofFork <T> (func: TryFunction<void,any>): Try<T> {
-        return new TryClass <T> ({isFork: true, func}, _getCallerFile());
+    export function ofFork <T> (func: TryFunction<void,any>, initialValue?: any): Try<T> {
+        return new TryClass <T> ({isFork: true, func}, _getCallerFile(), initialValue);
     }
 }
 
@@ -81,7 +81,7 @@ export namespace Try {
  * Private Objects
  */
 
-import * as child_process from "child_process";
+import * as Pool from "./libs/child_context_pool";
 import * as path from "path";
 
 
@@ -90,20 +90,18 @@ interface IFuncWrapper<T,U> {
     func: TryFunction<T,U>;
 }
 
-declare var global: any;
 
 /**
  * 
  */
 class TryClass<T> implements Try<T> {
 
-    private _child: child_process.ChildProcess;
-
     private _funcStack: Array<IFuncWrapper<any,any>> = [];
     private _initialValue: any;
     private _callerFileName: string;
 
-    constructor (func: IFuncWrapper<void,any>, callerFileName: string) {
+    constructor (func: IFuncWrapper<void,any>, callerFileName: string, initialValue?: any) {
+        this._initialValue = initialValue;
         this._callerFileName = callerFileName;
         this._funcStack = [func];
     }
@@ -179,41 +177,41 @@ class TryClass<T> implements Try<T> {
     private _executeFuncStack<T> (resolve: (v: Either<T>) => void, accumulator?: any) {
 
         if (! this._funcStack.length) {
-            if (this._child) {
-                this._child.kill();
-            }
             resolve(Either.Right<T>(accumulator));
             return;
         }
         
-        const ok = (r: any) => {
-            this._executeFuncStack(resolve, r);
-        }
-
-        const error = (e: Error) => {
-            resolve(Either.Left<T>(e));
-        }
-
         ((func: IFuncWrapper<any,any>, acc: any) => {
 
             try {
+                
+                let Success = (r: any) => {
+                    this._executeFuncStack(resolve, r);
+                };
+
+                let Failure = (e: Error) => {
+                    resolve(Either.Left<T>(e));
+                };
 
                 // If not fork, run the script in this thread.
                 // If process.env.__TRYJS_IN_FORK, already in child process.
                 if (! func.isFork || !! process.env.__TRYJS_IN_FORK) {
 
-                    const r = func.func.call({ok, error}, accumulator);
+                    const r = func.func.call({Success, Failure}, accumulator);
 
                     if (r !== undefined) {
 
                         if (r instanceof Either) {
-                            (r.isRight() && ok || error)(r.get());
+                            (r.isRight() && Success || Failure)(r.get());
                         } else if (r instanceof Promise) {
-                            r.then((v: T) => ok(v)).catch((e: Error) => error(e))
+                            r.then((v: T) => Success(v)).catch((e: Error) => Failure(e))
                         } else {
-                            ok(r);
+                            Success(r);
                         }
+
+                        Success = Failure = function () {};
                     }
+
                     return;
                 }
 
@@ -222,7 +220,7 @@ class TryClass<T> implements Try<T> {
             
                         cp.addListener ((r: Either<T>) => {
                             (cp.isDestroyable && Pool.destroy || Pool.release)(cp);
-                            (r.isRight() && ok || error)(r.get());
+                            (r.isRight() && Success || Failure)(r.get());
                         });
 
                         cp.send(func.func, acc, this._callerFileName);
@@ -232,7 +230,7 @@ class TryClass<T> implements Try<T> {
                     });
 
             } catch (err) {
-                console.log(err, err.stack);
+                log.error(err);
                 resolve(Either.Left<T>(err));
             }
 

@@ -2,7 +2,7 @@
 /**
  * The Either<R> class.
  */
-export class Either<R> {
+export default class Either <R> {
 
     /**
      * Creates a left-biased Either with the given error.

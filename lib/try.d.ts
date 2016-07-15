@@ -1,4 +1,4 @@
-import { Either } from "./either";
+import Either from "./either";
 export interface TryFunction<T, U> extends Function {
     name: string;
     length: number;
@@ -15,6 +15,6 @@ export interface Try<T> {
     toCurried(): (initialValue?: any) => Promise<Either<T>>;
 }
 export declare namespace Try {
-    function of<T>(func: TryFunction<void, any>): Try<T>;
-    function ofFork<T>(func: TryFunction<void, any>): Try<T>;
+    function of<T>(func: TryFunction<void, any>, initialValue?: any): Try<T>;
+    function ofFork<T>(func: TryFunction<void, any>, initialValue?: any): Try<T>;
 }

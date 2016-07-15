@@ -2,7 +2,8 @@
 const path = require("path");
 const vm = require('vm');
 
-import {Either} from "./Either";
+import Either from "../Either";
+import * as log from "./log";
 
 declare var global: any;
 
@@ -11,25 +12,19 @@ const ___origRequire___ = require;
 const ___that___ = this;
 
 // Send Either.Right(r) with destroy flag.
-function ok (r: any) {
+// Remove callbacks incase of double call.
+function Success (r: any) {
+    global.Success = global.Failure = function () {};
     process.send([null, r, false]);
 }
 
 // Send Either.Left(e) with destroy flag.
-function error (e: Error) {
-    process.send([e.stack, null, false]);
+// Remove callbacks incase of double call.
+function Failure (e: Error) {
+    global.Success = global.Failure = function () {};
+    log.error(e);
+    process.send([e.message, null, false]);
 }
-
-global.ok = ok;
-global.error = error;
-
-// Catch all exceptions.
-// Send Either.Left(e) with no destroy flag.
-// Exit process.
-process.on("uncaughtException", (e: Error) => {
-    process.send([e.stack, null, true]);
-    process.exit();
-});
 
 // Listen for messages from parent.
 process.on("message", function (message: {func: string, data: any, callerFileName: string}) {
@@ -53,20 +48,36 @@ process.on("message", function (message: {func: string, data: any, callerFileNam
             return ___origRequire___.apply(___that___, arguments);
         };
 
+        global.Success = Success;
+        global.Failure = Failure;
+
         const r = script.runInNewContext(global);
+
         if (r !== undefined) {
 
             if (r instanceof Either) {
-                (r.isRight() && ok || error)(r.get());
+                (r.isRight() && Success || Failure)(r.get());
             } else if (r instanceof Promise) {
-                r.then((v: any) => ok(v)).catch((e: Error) => error(e))
+                r.then((v: any) => Success(v)).catch((e: Error) => Failure(e))
             } else {
-                ok(r);
+                Success(r);
             }
         }
     } catch (err) {
-        error(err);
+        Failure(err);
     }
+});
+
+// Send unhandled Promise catch with destroy flag.
+process.on("unhandledRejection", Failure);
+
+// Catch all exceptions.
+// Send Either.Left(e) with no destroy flag.
+// Exit process.
+process.on("uncaughtException", (e: Error) => {
+    log.error(e);
+    process.send([e.message, null, true]);
+    process.exit();
 });
 
 /**

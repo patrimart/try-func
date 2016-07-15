@@ -2,8 +2,8 @@
   "name": "try-js",
   "version": "0.3.0",
   "description": "Improved JavaScript error handling.",
-  "main": "dist/index.js",
-  "typings": "dist",
+  "main": "lib/index.js",
+  "typings": "lib",
   "directories": {
     "test": "test"
   },
@@ -13,13 +13,23 @@
   "keywords": [
     "try",
     "catch",
+    "domain",
+    "domains",
     "either",
     "errors",
     "error",
+    "exception",
     "exceptions",
     "functional",
     "handling",
-    "monads"
+    "monads",
+    "uncaught",
+    "fork",
+    "forking",
+    "child_process",
+    "multi-thread",
+    "zone",
+    "zones"
   ],
   "author": "Patrick Martin",
   "license": "ISC",

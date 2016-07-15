@@ -1,4 +1,4 @@
-export declare class Either<R> {
+export default class Either<R> {
     private left;
     private right;
     static Left<R>(err: Error): Either<R>;

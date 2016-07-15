@@ -2,9 +2,13 @@
 import * as child_process from "child_process";
 
 import {Pool} from "generic-pool";
-import {TryFunction} from "./Try";
-import {Either} from "./Either";
+import {TryFunction} from "../Try";
+import Either from "../Either";
+import * as log from "./log";
 
+/**
+ * 
+ */
 export interface IChildProcess {
     isDestroyable: boolean;
     addListener <T> (f: (r: Either<T>) => void): void;
@@ -24,7 +28,7 @@ class ChildProcess implements IChildProcess {
 
     public constructor () {
 
-        this._child = child_process.fork(`${__dirname}/child_context`, ["special"], { env: { __TRYJS_IN_FORK: true}});
+        this._child = child_process.fork(`${__dirname}/child_context`, ["special"], { env: { __TRYJS_IN_FORK: true, TRYJS_DEBUG: process.env.TRYJS_DEBUG}});
 
         this._child.on("message", (m: [string, any, boolean]) => {
             if (this._emitter) {
@@ -83,9 +87,12 @@ const pool = new Pool<IChildProcess>({
     idleTimeoutMillis : process.env.TRYJS_FORK_POOL_IDLE || 9999,
     reapIntervalMillis: process.env.TRYJS_FORK_POOL_REAP || 3333,
     returnToHead      : true,
-    log               : true,
+    log               : false,
 });
 
+/**
+ * 
+ */
 export function acquire (): Promise<any> {
     return new Promise ((resolve, reject) => {
         pool.acquire((err, cp) => {
@@ -95,11 +102,17 @@ export function acquire (): Promise<any> {
     });
 }
 
+/**
+ * 
+ */
 export function release (cp: IChildProcess) {
     cp.release();
     pool.release(cp);
 }
 
+/**
+ * 
+ */
 export function destroy (cp:IChildProcess) {
     pool.destroy(cp);
 }
@@ -108,7 +121,7 @@ export function destroy (cp:IChildProcess) {
  * Gracefully shutdown the child_process pool.
  */
 function gracefulShutdown () {
-    console.log(`Shutting down the child_context_pool (size: ${pool.getPoolSize()}, available: ${pool.availableObjectsCount()})`);
+    log.info(`Shutting down the child_context_pool (size: ${pool.getPoolSize()}, available: ${pool.availableObjectsCount()})`);
     pool.drain(() => pool.destroyAllNow());
     process.exit();
 }
@@ -116,7 +129,7 @@ function gracefulShutdown () {
 process.on("SIGTERM", gracefulShutdown);
 process.on("SIGINT", gracefulShutdown);
 process.on("exit", gracefulShutdown);
-process.on("uncaughtException", () => {
+process.on("uncaughtException", (err: Error) => {
+    log.error(err);
     gracefulShutdown();
-    process.exit();
 });
