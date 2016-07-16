@@ -5,7 +5,7 @@ export function info (info: string, filename = "") {
     if (isDebug) {
         console.log("[%s] [info] %s: %s", new Date().toLocaleString(), info, filename);
     }
-} 
+}
 
 export function error (e: Error) {
     if (isDebug) {

@@ -1,4 +1,4 @@
-import Either from "./either";
+import { Either } from "./either";
 export interface TryFunction<T, U> extends Function {
     name: string;
     length: number;

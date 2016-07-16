@@ -1,8 +1,8 @@
 
 const path = require("path");
-const vm = require('vm');
+const vm = require("vm");
 
-import Either from "../Either";
+import {Either} from "../Either";
 import * as log from "./log";
 
 declare var global: any;
@@ -31,14 +31,18 @@ process.on("message", function (message: {func: string, data: any, callerFileNam
 
     try {
 
-        let code = `((${message.func})(${JSON.stringify(message.data)}))`,
+        let isGenerator = message.func.startsWith("function*");
+
+        let code = isGenerator ?
+                `co((${message.func}).bind(this, ${JSON.stringify(message.data)}))` :
+                `(${message.func}(${JSON.stringify(message.data)}))`,
             hash = ___hash___(code),
             script: any;
-        
+
         if (___compiledScriptCache___[hash]) {
             script = ___compiledScriptCache___[hash];
         } else {
-            script = new vm.Script(code, { filename: 'try-js-fork.vm' });
+            script = new vm.Script(code, { filename: "try-js-fork.vm" });
             ___compiledScriptCache___[hash] = script;
         }
 
@@ -51,18 +55,29 @@ process.on("message", function (message: {func: string, data: any, callerFileNam
         global.Success = Success;
         global.Failure = Failure;
 
-        const r = script.runInNewContext(global);
+        if (isGenerator) {
 
-        if (r !== undefined) {
+            global.co = require("co");
+            (script.runInNewContext(global) as Promise<any>)
+                .then((r: any) => {
+                    if (r !== undefined) {
+                        if (r instanceof Either) (r.isRight() && Success || Failure)(r.get());
+                        else if (r instanceof Promise) r.then((v: any) => Success(v)).catch((e: Error) => Failure(e))
+                        else Success(r);
+                    }
+                })
+                .catch((err: Error) => Failure(err));
 
-            if (r instanceof Either) {
-                (r.isRight() && Success || Failure)(r.get());
-            } else if (r instanceof Promise) {
-                r.then((v: any) => Success(v)).catch((e: Error) => Failure(e))
-            } else {
-                Success(r);
+        } else {
+
+            const r = script.runInNewContext(global);
+            if (r !== undefined) {
+                if (r instanceof Either) (r.isRight() && Success || Failure)(r.get());
+                else if (r instanceof Promise) r.then((v: any) => Success(v)).catch((e: Error) => Failure(e))
+                else Success(r);
             }
         }
+
     } catch (err) {
         Failure(err);
     }
@@ -84,7 +99,7 @@ process.on("uncaughtException", (e: Error) => {
  * https://github.com/darkskyapp/string-hash
  */
 function ___hash___ (str: string): number {
-  var hash = 5381, i = str.length
-  while(i) hash = (hash * 33) ^ str.charCodeAt(--i)
+  let hash = 5381, i = str.length
+  while (i) hash = (hash * 33) ^ str.charCodeAt(--i)
   return hash >>> 0;
 }

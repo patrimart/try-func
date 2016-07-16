@@ -2,7 +2,7 @@
 /**
  * The Either<R> class.
  */
-export default class Either <R> {
+export class Either <R> {
 
     /**
      * Creates a left-biased Either with the given error.
@@ -105,7 +105,7 @@ export default class Either <R> {
      * Returs the Either as a plain-old JS object.
      * @returns {{left: Error | undefined; right: R | undefined;}}
      */
-    public toObject (): {left: Error; right: R;} {
+    public toObject (): {left: Error; right: R} {
         return {
             left: this.left,
             right: this.right,
@@ -116,7 +116,7 @@ export default class Either <R> {
      * Returns the Either as a JSON object.
      * @returns {{left?: Error; right?: R;}}
      */
-    public toJSON (): {left: string; right: R;} {
+    public toJSON (): {left: string; right: R} {
         return {
             left : this.left ? this.left.message : undefined,
             right: this.right,

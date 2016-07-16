@@ -1,8 +1,3 @@
 
-import Either from "./either";
-import {Try} from "./try";
-
-export {
-    Either,
-    Try,
-}
+export {Either} from "./either";
+export {Try} from "./try";

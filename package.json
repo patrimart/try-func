@@ -1,9 +1,9 @@
 {
   "name": "try-js",
-  "version": "0.3.0",
-  "description": "Improved JavaScript error handling.",
+  "version": "0.4.0",
+  "description": "Improved JavaScript error handling, asyncronous flow and parallel processing.",
   "main": "lib/index.js",
-  "typings": "lib",
+  "typings": "lib/index.d.ts",
   "directories": {
     "test": "test"
   },
@@ -11,29 +11,47 @@
     "test": "mocha test/test.js"
   },
   "keywords": [
-    "try",
+    "async",
     "catch",
+    "child_process",
+    "coro",
+    "coroutine",
     "domain",
-    "domains",
     "either",
-    "errors",
     "error",
     "exception",
-    "exceptions",
-    "functional",
-    "handling",
-    "monads",
-    "uncaught",
+    "flow",
     "fork",
     "forking",
-    "child_process",
+    "functional",
+    "future",
+    "generator",
+    "handling",
+    "monad",
     "multi-thread",
-    "zone",
-    "zones"
+    "parallel",
+    "promise",
+    "thread",
+    "try",
+    "uncaught",
+    "worker",
+    "zone"
   ],
   "author": "Patrick Martin",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
+    "co": "^4.6.0",
     "generic-pool": "^2.4.2"
+  },
+  "devDependencies": {
+    "del": "^2.2.1",
+    "gulp": "^3.9.1",
+    "gulp-bump": "^2.2.0",
+    "gulp-mocha": "^2.2.0",
+    "gulp-typescript": "^2.13.6"
+  },
+  "repository": "patrick-martin-dev/try-js",
+  "engines": {
+    "node": ">= 0.12.0"
   }
 }

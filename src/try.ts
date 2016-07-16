@@ -1,11 +1,11 @@
 
-import Either from "./either";
+import {Either} from "./either";
 import * as log from "./libs/log";
 
 /**
  * The Try function interface.
  */
-export interface TryFunction<T,U> extends Function {
+export interface TryFunction<T, U> extends Function {
     name: string;
     length: number;
     prototype: any;
@@ -20,12 +20,12 @@ export interface Try <T> {
     /**
      * And then, run the given function.
      */
-    andThen  <I,O> (func: TryFunction<I,O>): Try<T>;
+    andThen  <I, O> (func: TryFunction<I, O>): Try<T>;
 
     /**
      * And then, fork a new process, run the given function.
      */
-    andThenFork  <I,O> (func: TryFunction<I,O>): Try<T>;
+    andThenFork  <I, O> (func: TryFunction<I, O>): Try<T>;
 
     /**
      * Returns a Promise with the Either result.
@@ -36,13 +36,13 @@ export interface Try <T> {
      * Returns a Promise with the right-biased Either, or executes
      * the given function.
      */
-    getOrElse (func: TryFunction<void,T>): Promise<Either<T>>;
+    getOrElse (func: TryFunction<void, T>): Promise<Either<T>>;
 
     /**
      * Returns a Promise with the right-biased Either, or executes
      * the given function in a forked process.
      */
-    getOrElseFork (func: TryFunction<void,T>): Promise<Either<T>>;
+    getOrElseFork (func: TryFunction<void, T>): Promise<Either<T>>;
 
     /**
      * Returns a Promise with the right-biased Either, or returns
@@ -65,14 +65,14 @@ export namespace Try {
     /**
      * Runs the given function.
      */
-    export function of <T> (func: TryFunction<void,any>, initialValue?: any): Try<T> {
+    export function of <T> (func: TryFunction<void, any>, initialValue?: any): Try<T> {
         return new TryClass <T> ({isFork: false, func}, _getCallerFile(), initialValue);
     }
 
     /**
      * Runs the given function in a forked child process.
      */
-    export function ofFork <T> (func: TryFunction<void,any>, initialValue?: any): Try<T> {
+    export function ofFork <T> (func: TryFunction<void, any>, initialValue?: any): Try<T> {
         return new TryClass <T> ({isFork: true, func}, _getCallerFile(), initialValue);
     }
 }
@@ -81,13 +81,14 @@ export namespace Try {
  * Private Objects
  */
 
+const co = require("co");
 import * as Pool from "./libs/child_context_pool";
 import * as path from "path";
 
 
-interface IFuncWrapper<T,U> {
+interface IFuncWrapper<T, U> {
     isFork: boolean;
-    func: TryFunction<T,U>;
+    func: TryFunction<T, U>;
 }
 
 
@@ -96,22 +97,22 @@ interface IFuncWrapper<T,U> {
  */
 class TryClass<T> implements Try<T> {
 
-    private _funcStack: Array<IFuncWrapper<any,any>> = [];
+    private _funcStack: Array<IFuncWrapper<any, any>> = [];
     private _initialValue: any;
     private _callerFileName: string;
 
-    constructor (func: IFuncWrapper<void,any>, callerFileName: string, initialValue?: any) {
+    constructor (func: IFuncWrapper<void, any>, callerFileName: string, initialValue?: any) {
         this._initialValue = initialValue;
         this._callerFileName = callerFileName;
         this._funcStack = [func];
     }
 
-    public andThen <I,O> (func: TryFunction<I,O>): TryClass<T> {
+    public andThen <I, O> (func: TryFunction<I, O>): TryClass<T> {
         this._funcStack.push({isFork: false, func});
         return this;
     }
 
-    public andThenFork <I,O> (func: TryFunction<I,O>): TryClass<T> {
+    public andThenFork <I, O> (func: TryFunction<I, O>): TryClass<T> {
         this._funcStack.push({isFork: false, func});
         return this;
     }
@@ -123,7 +124,7 @@ class TryClass<T> implements Try<T> {
         });
     }
 
-    public getOrElse (func: TryFunction<void,T>): Promise<Either<T>> {
+    public getOrElse (func: TryFunction<void, T>): Promise<Either<T>> {
 
         return new Promise((resolve, reject) => {
             this.get()
@@ -138,7 +139,7 @@ class TryClass<T> implements Try<T> {
         });
     }
 
-    public getOrElseFork (func: TryFunction<void,T>): Promise<Either<T>> {
+    public getOrElseFork (func: TryFunction<void, T>): Promise<Either<T>> {
 
         return new Promise((resolve, reject) => {
             this.get()
@@ -180,52 +181,69 @@ class TryClass<T> implements Try<T> {
             resolve(Either.Right<T>(accumulator));
             return;
         }
-        
-        ((func: IFuncWrapper<any,any>, acc: any) => {
+
+        ((wrap: IFuncWrapper<any, any>, acc: any) => {
 
             try {
-                
+
+                let isWaitingResponse = true;
+
                 let Success = (r: any) => {
-                    this._executeFuncStack(resolve, r);
+                    if (isWaitingResponse) {
+                        console.log("SUCCESS");
+                        this._executeFuncStack(resolve, r);
+                        isWaitingResponse = false;
+                    }
                 };
 
                 let Failure = (e: Error) => {
-                    resolve(Either.Left<T>(e));
+                    if (isWaitingResponse) {
+                        resolve(Either.Left<T>(e));
+                        isWaitingResponse = false;
+                    }
                 };
 
                 // If not fork, run the script in this thread.
                 // If process.env.__TRYJS_IN_FORK, already in child process.
-                if (! func.isFork || !! process.env.__TRYJS_IN_FORK) {
+                if (! wrap.isFork || !! process.env.__TRYJS_IN_FORK) {
 
-                    const r = func.func.call({Success, Failure}, accumulator);
-                    if (r !== undefined) {
+                    if (isGeneratorFunction(wrap.func)) {
 
-                        if (r instanceof Either) {
-                            (r.isRight() && Success || Failure)(r.get());
-                        } else if (r instanceof Promise) {
-                            r.then((v: T) => Success(v)).catch((e: Error) => Failure(e))
-                        } else {
-                            Success(r);
+                        co(wrap.func.bind({Success, Failure}, accumulator))
+                            .then((r: any) => {
+                                if (r instanceof Either) (r.isRight() && Success || Failure)(r.get());
+                                else if (r instanceof Promise) r.then((v: T) => Success(v)).catch((e: Error) => Failure(e))
+                                else Success(r);
+                            })
+                            .catch((err: Error) => Failure(err));
+
+                    } else {
+
+                        const r = wrap.func.call({Success, Failure}, accumulator);
+                        if (r !== undefined) {
+                            if (r instanceof Either) (r.isRight() && Success || Failure)(r.get());
+                            else if (r instanceof Promise) r.then((v: T) => Success(v)).catch((e: Error) => Failure(e))
+                            else Success(r);
                         }
                     }
-                    Success = Failure = function () {};
-                    return;
-                }
 
-                Pool.acquire()
-                    .then((cp: Pool.IChildProcess) => {
-            
-                        cp.addListener ((r: Either<T>) => {
-                            (cp.isDestroyable && Pool.destroy || Pool.release)(cp);
-                            (r.isRight() && Success || Failure)(r.get());
-                            Success = Failure = function () {};
+                } else {
+
+                    Pool.acquire()
+                        .then((cp: Pool.IChildProcess) => {
+
+                            cp.addListener ((r: Either<T>) => {
+                                (cp.isDestroyable && Pool.destroy || Pool.release)(cp);
+                                (r.isRight() && Success || Failure)(r.get());
+                                Success = Failure = function () {};
+                            });
+
+                            cp.send(wrap.func, acc, this._callerFileName);
+                        })
+                        .catch(err => {
+                            throw err;
                         });
-
-                        cp.send(func.func, acc, this._callerFileName);
-                    })
-                    .catch(err => {
-                        throw err;
-                    });
+                }
 
             } catch (err) {
                 log.error(err);
@@ -257,11 +275,17 @@ function _getCallerFile() {
 
         while (err.stack.length) {
             callerfile = err.stack.shift().getFileName();
-            if(currentfile !== callerfile) break;
+            if (currentfile !== callerfile) break;
         }
     } catch (e) {}
 
-    Error.prepareStackTrace = originalFunc; 
+    Error.prepareStackTrace = originalFunc;
 
     return callerfile;
+}
+
+function isGeneratorFunction(obj: any) {
+    const constructor = obj.constructor;
+    if (! constructor) return false;
+    return "GeneratorFunction" === constructor.name || "GeneratorFunction" === constructor.displayName;
 }

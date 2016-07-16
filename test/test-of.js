@@ -12,15 +12,22 @@ var outter = 10;
 Try.ofFork(() => {
 
     var Double = require('./utils/math').Double;
-
+    // Promise.reject(new Error("Promise Boom"));
     setTimeout(() => {
+        // Promise.reject(new Error("Promise Boom"));
         Success('OK Result '+ Double(1));
     }, 1000);
 
-    return 'OK Result '+ Double(2);
+    // return 'OK Result '+ Double(2);
+}).andThenFork(function* (v) {
+
+    // yield Promise.reject(new Error("Promise BOOM!"));
+    var r = yield Promise.resolve(v + ' ...andThen.');
+    return r;
 })
-.get()
-.then(result => console.log('RESULT 1 =>', result));
+.get().then(result => console.log('RESULT 1 =>', result));
+
+
 
 // Non-fork must be annon-funcs, not lambdas, if using this.Success/Failure.
 // Is closure.
@@ -45,11 +52,13 @@ Try.of(function () {
         resolve(v * v);
     });
 
-}).andThen(v => {
-    return 'abc'+ v;
+}).andThen(function* (v) {
+
+    // yield Promise.reject(new Error("Promise BOOM!"));
+    var r = yield Promise.resolve('abc'+ v);
+    return r;
 })
-.get()
-.then(result => console.log('RESULT 2 =>', result));
+.get().then(result => console.log('RESULT 2 =>', result));
 
 setTimeout(() => {
     console.log('End Test');

@@ -3,7 +3,7 @@ import * as child_process from "child_process";
 
 import {Pool} from "generic-pool";
 import {TryFunction} from "../Try";
-import Either from "../Either";
+import {Either} from "../Either";
 import * as log from "./log";
 
 /**
@@ -12,7 +12,7 @@ import * as log from "./log";
 export interface IChildProcess {
     isDestroyable: boolean;
     addListener <T> (f: (r: Either<T>) => void): void;
-    send <T,U> (func: TryFunction<T,U>, data: any, callerFileName: string): void;
+    send <T, U> (func: TryFunction<T, U>, data: any, callerFileName: string): void;
     release (): void;
     destroy (): void;
 }
@@ -59,7 +59,7 @@ class ChildProcess implements IChildProcess {
         return this._isDestroyable;
     }
 
-    public send <T,U> (func: TryFunction<T,U>, data: any, callerFileName: string): void {
+    public send <T, U> (func: TryFunction<T, U>, data: any, callerFileName: string): void {
         this._child && this._child.send({func: func.toString(), data: JSON.stringify(data), callerFileName});
     }
 
@@ -78,7 +78,7 @@ class ChildProcess implements IChildProcess {
 }
 
 const pool = new Pool<IChildProcess>({
-    name              : 'child_context_pool',
+    name              : "child_context_pool",
     create            : (callback) => callback(null, new ChildProcess()),
     destroy           : (cp) => cp.destroy(),
     max               : process.env.TRYJS_FORK_POOL_MAX || 10,
@@ -113,7 +113,7 @@ export function release (cp: IChildProcess) {
 /**
  * 
  */
-export function destroy (cp:IChildProcess) {
+export function destroy (cp: IChildProcess) {
     pool.destroy(cp);
 }
 
