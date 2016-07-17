@@ -1,125 +1,275 @@
 
+import {Option} from "./option";
+
 /**
- * The Either<R> class.
+ * The Either<L, R> abstract class.
  */
-export class Either <R> {
+export abstract class Either <L, R> {
+
+    abstract getOrElse (f: () => R): R;
+    abstract getOrElseGet (right: R): R;
+    abstract getOrThrow (err?: Error): R;
+    abstract orElse (f: () => Either<L, R>): Either<L, R>;
+    abstract toObject (): {left?: L; right?: R};
 
     /**
-     * Creates a left-biased Either with the given error.
-     * @returns {Either<R>}
-     */
-    public static Left<R> (err: Error): Either<R> {
-        return new Either(err, undefined);
-    }
-
-    /**
-     * Creates a rigt-biased Either with the given value.
-     * @returns {Either<R>}
-     */
-    public static Right<R> (right: R): Either<R> {
-        return new Either(undefined, right);
-    }
-
-    /**
-     * Instantiates a new Either instance.
-     * @param {Error | undefined} left - the left error value.
-     * @param {R | undefined} right - the right value.
-     */
-    constructor (private left: Error, private right: R) {}
-
-    /**
-     * Is this a left-biased Either.
+     * Is this a Left.
      * @returns {boolean}
      */
-    public isLeft (): boolean {
-        return !! this.left;
-    }
+    public isLeft (): boolean { return false; }
 
     /**
-     * Is this a right-biased Either.
+     * Is this a Right.
      * @returns {boolean}
      */
-    public isRight (): boolean {
-        return !! this.right;
-    }
+    public isRight (): boolean { return false; }
 
     /**
-     * Returns the left or right value.
-     * @returns {R | Error}
+     * Throws a ReferenceError.
      */
-    public get (): R | Error {
-        return this.right || this.left;
+    public get (): R {
+        throw new ReferenceError("This is a Left either.")
     }
 
     /**
-     * Returns the left value, or undefined.
-     * @returns {Error | undefined}
+     * Returns an undefined Left value.
+     * @returns {L}
      */
-    public getLeft (): Error {
-        return this.left;
-    }
+    public getLeft (): L { return undefined; }
 
     /**
-     * Returns the right value, or undefined.
-     * @returns {R | undefined}
-     */
-    public getRight (): R {
-        return this.right;
-    }
-
-    /**
-     * If right, returns the right value. If left, returns the given parameter value.
-     * @param {R | (() => R)} right - the value to return if left-biased.
+     * Returns an undefined Right value.
      * @returns {R}
      */
-    public getOrElse(right: R | (() => R)): R {
-        if (this.isRight()) {
-            return this.right;
-        }
-        if (typeof right === "function") {
-            return (right as () => R)();
-        }
-        return right as R;
+    public getRight (): R { return undefined; }
+
+    /**
+     * Returns an Option.None<R>.
+     * @returns {Option<R>}
+     */
+    public toOption (): Option<R> {
+        return Option.none<R>();
     }
 
     /**
-     * If right-biased, returns the right value. If left-biased, throws the error.
-     * @returns {R}
+     * Tests equality of Eithers.
+     * @params {Either<L, R>} other - the other Either to test
+     * @returns {boolean}
      */
-    public getOrThrow (): R {
-        if (this.left) {
-            throw this.left;
-        }
-        return this.right;
-    }
-
-    /**
-     * Returns the Either as a string.
-     * @returns {string} '{"right": R}' or '{"left": string}'
-     */
-    public toString(): string {
-        return JSON.stringify(this.toJSON());
-    }
-
-    /**
-     * Returs the Either as a plain-old JS object.
-     * @returns {{left: Error | undefined; right: R | undefined;}}
-     */
-    public toObject (): {left: Error; right: R} {
-        return {
-            left: this.left,
-            right: this.right,
-        }
+    public equals (other: Either<L, R>): boolean {
+        if (! other) return false;
+        if (this === other) return true;
+        return this.getRight() === this.getRight() && this.getLeft() === this.getLeft();
     }
 
     /**
      * Returns the Either as a JSON object.
-     * @returns {{left?: Error; right?: R;}}
+     * @returns {{left?: L; right?: R}}
      */
-    public toJSON (): {left: string; right: R} {
-        return {
-            left : this.left ? this.left.message : undefined,
-            right: this.right,
-        };
+    public toJSON (): {left?: L; right?: R} {
+        return this.toObject();
     }
+
+    /**
+     * Returns the Either as a string.
+     * @returns {string} '{"right": R}' or '{"left": L}'
+     */
+    public toString (): string {
+        return JSON.stringify(this.toJSON());
+    }
+}
+
+/**
+ * The Either namespace.
+ */
+export namespace Either {
+
+    /**
+     * Returns a new Either.Left<L, R> instance.
+     * @returns {Either.Left<L, R>}
+     */
+    export function left <L, R> (left: L) {
+        return new Left<L, R>(left);
+    }
+
+    /**
+     * Returns a new Either.Right<L, R> instance.
+     * @returns {Either.Right<L, R>}
+     */
+    export function right <L, R> (right: R) {
+        return new Right<L, R>(right);
+    }
+
+    /**
+     * Returns the singleton instance of Either.Left<void, void>.
+     * @returns {Either.Left<void, void>}
+     */
+    export function nothing () {
+        return nothingEither;
+    }
+
+    /**
+     * The Either.Left<L, R> class.
+     */
+    export class Left <L, R> extends Either <L, R> {
+
+        constructor (private left: L) {
+            super();
+        }
+
+        /**
+         * Returns that this is a Left.
+         * @returns {boolean}
+         */
+        public isLeft (): boolean {
+            return true;
+        }
+
+        /**
+         * Returns the Left value.
+         * @returns {L}
+         */
+        public getLeft (): L {
+            return this.left;
+        }
+
+        /**
+         * Returns the evaluated given function.
+         * @param {() => R} f - the or else function to evaluate
+         * @returns {R}
+         */
+        public getOrElse (f: () => R): R {
+            return f();
+        }
+
+        /**
+         * Returns the given R value.
+         * @param {R} right - the or else value
+         * @returns {R}
+         */
+        public getOrElseGet (right: R): R {
+            return right;
+        }
+
+        /**
+         * Throws a ReferenceError or the given Error.
+         * @param {Error} [err] - the optional Error to throw
+         * @returns {R}
+         */
+        public getOrThrow (err?: Error): R {
+            throw err || new ReferenceError("This is a Left either.")
+        }
+
+        /**
+         * Returns the evaluated function.
+         * @param {() => Either<L, R>} f - the or else function to evaluate
+         * @returns {Either<L, R>}
+         */
+        public orElse (f: () => Either<L, R>): Either<L, R> {
+            return f();
+        }
+
+        /**
+         * Returns an Option.None<R>.
+         * returns {Option<R>}
+         */
+        public toOption (): Option<R> {
+            return Option.none<R>();
+        }
+
+        /**
+         * Returs the Either as a plain-old JS object.
+         * @returns {{left: L}}
+         */
+        public toObject (): {left?: L; right?: R} {
+            return { left : this.left };
+        }
+    }
+
+    /**
+     * The Either.Right<L, R> class.
+     */
+    export class Right <L, R> extends Either <L, R> {
+
+        constructor (private right: R) {
+            super();
+        }
+
+        /**
+         * This is a Right.
+         * @returns {boolean}
+         */
+        public isRight (): boolean {
+            return true;
+        }
+
+        /**
+         * Returns the Right value.
+         * @returns {R}
+         */
+        public get (): R {
+            return this.right;
+        }
+
+        /**
+         * Returns the Right value.
+         * @returns {R}
+         */
+        public getRight (): R {
+            return this.right;
+        }
+
+        /**
+         * Returns the Right value.
+         * @param {() => R} f - the function to evaluate if Left
+         * @returns {R}
+         */
+        public getOrElse (f: () => R): R {
+            return this.right;
+        }
+
+        /**
+         * Returns the Right value.
+         * @param {R} right - the value to return if Left
+         * @return {R}
+         */
+        public getOrElseGet (right: R): R {
+            return this.right;
+        }
+
+        /**
+         * Returns the Right value.
+         * @returns {R}
+         */
+        public getOrThrow (): R {
+            return this.right;
+        }
+
+        /**
+         * Returns this Right.
+         * @param {Either<L, R>} f - the function to evaluate if Left
+         * @returns {Either<L, R>}
+         */
+        public orElse (f: () => Either<L, R>): Either<L, R> {
+            return this;
+        }
+
+        /**
+         * Returns an Option.Some<R>.
+         * @returns {Option<R>}
+         */
+        public toOption (): Option<R> {
+            return Option.some<R>(this.right);
+        }
+
+        /**
+         * Returs the Either as a plain-old JS object.
+         * @returns {{left: L | undefined; right: R | undefined;}}
+         */
+        public toObject (): {left?: L; right?: R} {
+            return { right: this.right };
+        }
+    }
+
+    const nothingEither = new Left<void, void>(void(0));
 }

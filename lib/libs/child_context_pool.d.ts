@@ -1,8 +1,8 @@
-import { TryFunction } from "../Try";
-import { Either } from "../Either";
+import { TryFunction } from "../try";
+import { Either } from "../either";
 export interface IChildProcess {
     isDestroyable: boolean;
-    addListener<T>(f: (r: Either<T>) => void): void;
+    addListener<T>(f: (r: Either<Error, T>) => void): void;
     send<T, U>(func: TryFunction<T, U>, data: any, callerFileName: string): void;
     release(): void;
     destroy(): void;

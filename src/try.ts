@@ -1,11 +1,14 @@
 
 import {Either} from "./either";
+import {Option} from "./option";
 import * as log from "./libs/log";
+
+export type TryFunctionReturn<U extends string | number | boolean | {} | void> = Promise<U> | Either<Error, U> | Option<U> | string | number | boolean | Array<U> | {} | void;
 
 /**
  * The Try function interface.
  */
-export interface TryFunction<T, U> extends Function {
+export interface TryFunction<T, U extends TryFunctionReturn<U>> extends Function {
     name: string;
     length: number;
     prototype: any;
@@ -30,31 +33,31 @@ export interface Try <T> {
     /**
      * Returns a Promise with the Either result.
      */
-    get (): Promise<Either<T>>;
+    get (): Promise<Either<Error, T>>;
 
     /**
      * Returns a Promise with the right-biased Either, or executes
      * the given function.
      */
-    getOrElse (func: TryFunction<void, T>): Promise<Either<T>>;
+    getOrElse (func: TryFunction<void, T>): Promise<Either<Error, T>>;
 
     /**
      * Returns a Promise with the right-biased Either, or executes
      * the given function in a forked process.
      */
-    getOrElseFork (func: TryFunction<void, T>): Promise<Either<T>>;
+    getOrElseFork (func: TryFunction<void, T>): Promise<Either<Error, T>>;
 
     /**
      * Returns a Promise with the right-biased Either, or returns
      * a left-biased Either with the given Error.
      */
-    getOrThrow (err?: Error): Promise<Either<T>>;
+    getOrThrow (err?: Error): Promise<Either<Error, T>>;
 
     /**
      * Returns the Try as a curried function, with the option to
      * pass an initial value.
      */
-    toCurried (): (initialValue?: any) => Promise<Either<T>>;
+    toCurried (): (initialValue?: any) => Promise<Either<Error, T>>;
 }
 
 /**
@@ -117,14 +120,14 @@ class TryClass<T> implements Try<T> {
         return this;
     }
 
-    public get (): Promise<Either<T>> {
+    public get (): Promise<Either<Error, T>> {
 
         return new Promise((resolve, reject) => {
             this._executeFuncStack(resolve, this._initialValue);
         });
     }
 
-    public getOrElse (func: TryFunction<void, T>): Promise<Either<T>> {
+    public getOrElse (func: TryFunction<void, T>): Promise<Either<Error, T>> {
 
         return new Promise((resolve, reject) => {
             this.get()
@@ -139,7 +142,7 @@ class TryClass<T> implements Try<T> {
         });
     }
 
-    public getOrElseFork (func: TryFunction<void, T>): Promise<Either<T>> {
+    public getOrElseFork (func: TryFunction<void, T>): Promise<Either<Error, T>> {
 
         return new Promise((resolve, reject) => {
             this.get()
@@ -154,7 +157,7 @@ class TryClass<T> implements Try<T> {
         });
     }
 
-    public getOrThrow (err?: Error): Promise<Either<T>> {
+    public getOrThrow (err?: Error): Promise<Either<Error, T>> {
 
         return new Promise((resolve, reject) => {
             this.get()
@@ -168,17 +171,17 @@ class TryClass<T> implements Try<T> {
         });
     }
 
-    public toCurried (): (initialValue?: any) => Promise<Either<T>> {
+    public toCurried (): (initialValue?: any) => Promise<Either<Error, T>> {
         return (initialValue?: any) => {
             this._initialValue = initialValue;
             return this.get();
         }
     }
 
-    private _executeFuncStack<T> (resolve: (v: Either<T>) => void, accumulator?: any) {
+    private _executeFuncStack<T> (resolve: (v: Either<Error, T>) => void, accumulator?: any) {
 
         if (! this._funcStack.length) {
-            resolve(Either.Right<T>(accumulator));
+            resolve(Either.right<Error, T>(accumulator));
             return;
         }
 
@@ -198,7 +201,7 @@ class TryClass<T> implements Try<T> {
 
                 let Failure = (e: Error) => {
                     if (isWaitingResponse) {
-                        resolve(Either.Left<T>(e));
+                        resolve(Either.left<Error, T>(e));
                         isWaitingResponse = false;
                     }
                 };
@@ -211,8 +214,11 @@ class TryClass<T> implements Try<T> {
 
                         co(wrap.func.bind({Success, Failure}, accumulator))
                             .then((r: any) => {
-                                if (r instanceof Either) (r.isRight() && Success || Failure)(r.get());
-                                else if (r instanceof Promise) r.then((v: T) => Success(v)).catch((e: Error) => Failure(e))
+                                if (r instanceof Either.Right) Success(r.get());
+                                else if (r instanceof Either.Left) Failure(new ReferenceError("This either is Left."))
+                                else if (r instanceof Option.Some) Success(r.get());
+                                else if (r instanceof Option.None) Failure(new ReferenceError("This option is None."));
+                                else if (r instanceof Promise) r.then((v: any) => Success(v)).catch((e: Error) => Failure(e))
                                 else Success(r);
                             })
                             .catch((err: Error) => Failure(err));
@@ -221,8 +227,11 @@ class TryClass<T> implements Try<T> {
 
                         const r = wrap.func.call({Success, Failure}, accumulator);
                         if (r !== undefined) {
-                            if (r instanceof Either) (r.isRight() && Success || Failure)(r.get());
-                            else if (r instanceof Promise) r.then((v: T) => Success(v)).catch((e: Error) => Failure(e))
+                            if (r instanceof Either.Right) Success(r.get());
+                            else if (r instanceof Either.Left) Failure(new ReferenceError("This either is Left."))
+                            else if (r instanceof Option.Some) Success(r.get());
+                            else if (r instanceof Option.None) Failure(new ReferenceError("This option is None."));
+                            else if (r instanceof Promise) r.then((v: any) => Success(v)).catch((e: Error) => Failure(e))
                             else Success(r);
                         }
                     }
@@ -232,7 +241,7 @@ class TryClass<T> implements Try<T> {
                     Pool.acquire()
                         .then((cp: Pool.IChildProcess) => {
 
-                            cp.addListener ((r: Either<T>) => {
+                            cp.addListener ((r: Either<Error, T>) => {
                                 (cp.isDestroyable && Pool.destroy || Pool.release)(cp);
                                 (r.isRight() && Success || Failure)(r.get());
                                 Success = Failure = function () {};
@@ -247,7 +256,7 @@ class TryClass<T> implements Try<T> {
 
             } catch (err) {
                 log.error(err);
-                resolve(Either.Left<T>(err));
+                resolve(Either.left<Error, T>(err));
             }
 
         })(this._funcStack.shift(), accumulator);

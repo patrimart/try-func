@@ -2,7 +2,8 @@
 const path = require("path");
 const vm = require("vm");
 
-import {Either} from "../Either";
+import {Either} from "../either";
+import {Option} from "../option";
 import * as log from "./log";
 
 declare var global: any;
@@ -61,7 +62,10 @@ process.on("message", function (message: {func: string, data: any, callerFileNam
             (script.runInNewContext(global) as Promise<any>)
                 .then((r: any) => {
                     if (r !== undefined) {
-                        if (r instanceof Either) (r.isRight() && Success || Failure)(r.get());
+                        if (r instanceof Either.Right) Success(r.get());
+                        else if (r instanceof Either.Left) Failure(new ReferenceError("This either is Left."))
+                        else if (r instanceof Option.Some) Success(r.get());
+                        else if (r instanceof Option.None) Failure(new ReferenceError("This option is None."));
                         else if (r instanceof Promise) r.then((v: any) => Success(v)).catch((e: Error) => Failure(e))
                         else Success(r);
                     }
@@ -72,7 +76,10 @@ process.on("message", function (message: {func: string, data: any, callerFileNam
 
             const r = script.runInNewContext(global);
             if (r !== undefined) {
-                if (r instanceof Either) (r.isRight() && Success || Failure)(r.get());
+                if (r instanceof Either.Right) Success(r.get());
+                else if (r instanceof Either.Left) Failure(new ReferenceError("This either is Left."))
+                else if (r instanceof Option.Some) Success(r.get());
+                else if (r instanceof Option.None) Failure(new ReferenceError("This option is None."));
                 else if (r instanceof Promise) r.then((v: any) => Success(v)).catch((e: Error) => Failure(e))
                 else Success(r);
             }

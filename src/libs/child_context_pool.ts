@@ -2,8 +2,8 @@
 import * as child_process from "child_process";
 
 import {Pool} from "generic-pool";
-import {TryFunction} from "../Try";
-import {Either} from "../Either";
+import {TryFunction} from "../try";
+import {Either} from "../either";
 import * as log from "./log";
 
 /**
@@ -11,7 +11,7 @@ import * as log from "./log";
  */
 export interface IChildProcess {
     isDestroyable: boolean;
-    addListener <T> (f: (r: Either<T>) => void): void;
+    addListener <T> (f: (r: Either<Error, T>) => void): void;
     send <T, U> (func: TryFunction<T, U>, data: any, callerFileName: string): void;
     release (): void;
     destroy (): void;
@@ -23,7 +23,7 @@ export interface IChildProcess {
 class ChildProcess implements IChildProcess {
 
     private _child: child_process.ChildProcess;
-    private _emitter: (r: Either<any>) => void;
+    private _emitter: (r: Either<Error, any>) => void;
     private _isDestroyable = false;
 
     public constructor () {
@@ -34,23 +34,23 @@ class ChildProcess implements IChildProcess {
             if (this._emitter) {
                 this._isDestroyable = m[2];
                 if (m[0]) {
-                    this._emitter(Either.Left<any>(new Error(m[0])));
+                    this._emitter(Either.left<Error, any>(new Error(m[0])));
                 } else {
-                    this._emitter(Either.Right<any>(m[1]));
+                    this._emitter(Either.right<Error, any>(m[1]));
                 }
             }
         });
 
         this._child.on("error", (err: Error) => {
             this._isDestroyable = true;
-            this._emitter && this._emitter(Either.Left<any>(err));
+            this._emitter && this._emitter(Either.left<Error, any>(err));
             this._child && this._child.kill();
             this._child = null;
         });
 
         this._child.on("exit", (code: number, signal: string) => {
             this._isDestroyable = true;
-            this._emitter && this._emitter(Either.Left<any>(new Error(`child_process exit(${code}, ${signal})`)));
+            this._emitter && this._emitter(Either.left<Error, any>(new Error(`child_process exit(${code}, ${signal})`)));
             this._child = null;
         });
     }
@@ -63,7 +63,7 @@ class ChildProcess implements IChildProcess {
         this._child && this._child.send({func: func.toString(), data: JSON.stringify(data), callerFileName});
     }
 
-    public addListener <T> (f: (r: Either<T>) => void) {
+    public addListener <T> (f: (r: Either<Error, T>) => void) {
         this._emitter = f;
     }
 
