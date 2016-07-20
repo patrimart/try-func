@@ -32,7 +32,7 @@ export abstract class Option <T> {
      * Throws a ReferenceError.
      */
     public get (): T {
-        throw new ReferenceError("This is a None option.")
+        throw new ReferenceError("This is option is None.")
     }
 
     /**
@@ -40,7 +40,7 @@ export abstract class Option <T> {
      * @returns {Either.Left<Error, T>}
      */
     public toEither (): Either<Error, T> {
-        return Either.left<Error, T>(new ReferenceError("This is a Left either."));
+        return Either.left<Error, T>(new ReferenceError("This either is Left."));
     }
 
     /**
@@ -141,7 +141,7 @@ export namespace Option {
          * @returns {T}
          */
         public getOrThrow (err?: Error): T {
-            throw err || new ReferenceError("This is a Left either.")
+            throw err || new ReferenceError("This option is None.")
         }
 
         /**
@@ -157,7 +157,7 @@ export namespace Option {
          * Returns an Either.Left<Error, T>.
          */
         public toEither () {
-            return Either.left<Error, T>(new ReferenceError("This is a Left either."));
+            return Either.left<Error, T>(new ReferenceError("This either is Left."));
         }
 
         /**

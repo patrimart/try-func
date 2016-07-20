@@ -3,16 +3,16 @@ import {Either} from "./either";
 import {Option} from "./option";
 import * as log from "./libs/log";
 
-export type TryFunctionReturn<U extends string | number | boolean | {} | void> = Promise<U> | Either<Error, U> | Option<U> | string | number | boolean | Array<U> | {} | void;
+export type TryFunctionReturn<T> = Promise<T> | Either<Error, T> | Option<T> | T;
+
 
 /**
  * The Try function interface.
  */
 export interface TryFunction<T, U extends TryFunctionReturn<U>> extends Function {
-    name: string;
+    name?: string;
     length: number;
     prototype: any;
-    constructor(v?: T): U;
 }
 
 /**
@@ -23,12 +23,12 @@ export interface Try <T> {
     /**
      * And then, run the given function.
      */
-    andThen  <I, O> (func: TryFunction<I, O>): Try<T>;
+    andThen  <I, O> (func: TryFunction<I, O>): this;
 
     /**
      * And then, fork a new process, run the given function.
      */
-    andThenFork  <I, O> (func: TryFunction<I, O>): Try<T>;
+    andThenFork  <I, O> (func: TryFunction<I, O>): this;
 
     /**
      * Returns a Promise with the Either result.
@@ -39,19 +39,24 @@ export interface Try <T> {
      * Returns a Promise with the right-biased Either, or executes
      * the given function.
      */
-    getOrElse (func: TryFunction<void, T>): Promise<Either<Error, T>>;
+    getOrElse <I> (func: TryFunction<void, T>, value?: I): Promise<Either<Error, T>>;
 
     /**
      * Returns a Promise with the right-biased Either, or executes
      * the given function in a forked process.
      */
-    getOrElseFork (func: TryFunction<void, T>): Promise<Either<Error, T>>;
+    getOrElseFork <I> (func: TryFunction<void, T>, value?: I): Promise<Either<Error, T>>;
 
     /**
      * Returns a Promise with the right-biased Either, or returns
      * a left-biased Either with the given Error.
      */
     getOrThrow (err?: Error): Promise<Either<Error, T>>;
+
+    /**
+     * Returns a subscription.
+     */
+    // subscribe (onNext: (value: T) => void, onError: (err: Error) => void, onComplete: () => void): {unsubscribe: () => void};
 
     /**
      * Returns the Try as a curried function, with the option to
@@ -69,14 +74,16 @@ export namespace Try {
      * Runs the given function.
      */
     export function of <T> (func: TryFunction<void, any>, initialValue?: any): Try<T> {
-        return new TryClass <T> ({isFork: false, func}, _getCallerFile(), initialValue);
+        const runner = new TryLocal(func);
+        return new TryClass <T> (runner, _getCallerFile(), initialValue);
     }
 
     /**
      * Runs the given function in a forked child process.
      */
     export function ofFork <T> (func: TryFunction<void, any>, initialValue?: any): Try<T> {
-        return new TryClass <T> ({isFork: true, func}, _getCallerFile(), initialValue);
+        const runner = new TryFork(func, _getCallerFile());
+        return new TryClass <T> (runner, _getCallerFile(), initialValue);
     }
 }
 
@@ -95,54 +102,62 @@ interface IFuncWrapper<T, U> {
 }
 
 
+interface TryRunner <I, O> {
+
+    setPrevious (f: TryRunner<any, I>): void;
+
+    setNext (f: TryRunner<O, any>): void;
+
+    run (accumulator: I, onNext: (v: Either<Error, O>) => void): void;
+
+    isComplete (prevComplete: boolean): boolean;
+
+    shutdown (): void;
+}
+
+
 /**
  * 
  */
 class TryClass<T> implements Try<T> {
 
-    private _funcStack: Array<IFuncWrapper<any, any>> = [];
-    private _initialValue: any;
-    private _callerFileName: string;
+    private last: TryRunner<any, any>;
 
-    constructor (func: IFuncWrapper<void, any>, callerFileName: string, initialValue?: any) {
-        this._initialValue = initialValue;
-        this._callerFileName = callerFileName;
-        this._funcStack = [func];
+    constructor (
+        private head: TryRunner<void, any>,
+        private callerFileName: string,
+        private initialValue?: any
+    ) {
+        this.last = head;
     }
 
-    public andThen <I, O> (func: TryFunction<I, O>): TryClass<T> {
-        this._funcStack.push({isFork: false, func});
+    public andThen <I, O> (func: TryFunction<I, O>): this {
+        const runner = new TryLocal(func);
+        this.last.setNext(runner);
+        runner.setPrevious(this.last);
+        this.last = runner;
         return this;
     }
 
-    public andThenFork <I, O> (func: TryFunction<I, O>): TryClass<T> {
-        this._funcStack.push({isFork: false, func});
+    public andThenFork <I, O> (func: TryFunction<I, O>): this {
+        const runner = new TryFork(func, this.callerFileName);
+        this.last.setNext(runner);
+        runner.setPrevious(this.last);
+        this.last = runner;
         return this;
     }
 
     public get (): Promise<Either<Error, T>> {
 
-        return new Promise((resolve, reject) => {
-            this._executeFuncStack(resolve, this._initialValue);
+        return new Promise((resolve, _) => {
+            this.head.run(this.initialValue, (next: Either<Error, T>) => {
+                resolve(next);
+                // TODO Gets always complete. if (this.head.isComplete(true)) this.head.shutdown();
+            });
         });
     }
 
-    public getOrElse (func: TryFunction<void, T>): Promise<Either<Error, T>> {
-
-        return new Promise((resolve, reject) => {
-            this.get()
-                .then(r => {
-                    if (r.isRight()) {
-                        resolve(r);
-                    } else {
-                        this._funcStack = [{isFork: false, func}];
-                        this._executeFuncStack(resolve);
-                    }
-                });
-        });
-    }
-
-    public getOrElseFork (func: TryFunction<void, T>): Promise<Either<Error, T>> {
+    public getOrElse <I> (func: TryFunction<void, T>, value?: I): Promise<Either<Error, T>> {
 
         return new Promise((resolve, reject) => {
             this.get()
@@ -150,13 +165,29 @@ class TryClass<T> implements Try<T> {
                     if (r.isRight()) {
                         resolve(r);
                     } else {
-                        this._funcStack = [{isFork: true, func}];
-                        this._executeFuncStack(resolve);
+                        const runner = new TryLocal <I, T> (func);
+                        runner.run(value, (next: Either<Error, T>) => resolve(next));
                     }
                 });
         });
     }
 
+    public getOrElseFork <I> (func: TryFunction<void, T>, value?: I): Promise<Either<Error, T>> {
+
+        return new Promise((resolve, reject) => {
+            this.get()
+                .then(r => {
+                    if (r.isRight()) {
+                        resolve(r);
+                    } else {
+                        const runner = new TryFork <I, T> (func, this.callerFileName);
+                        runner.run(value, (next: Either<Error, T>) => resolve(next));
+                    }
+                });
+        });
+    }
+
+    // Works well with yield.
     public getOrThrow (err?: Error): Promise<Either<Error, T>> {
 
         return new Promise((resolve, reject) => {
@@ -171,95 +202,160 @@ class TryClass<T> implements Try<T> {
         });
     }
 
+    // public subscribe (onNext: (value: T) => void, onError: (err: Error) => void, onComplete: () => void): {unsubscribe: () => void} {
+
+    // }
+
     public toCurried (): (initialValue?: any) => Promise<Either<Error, T>> {
+
         return (initialValue?: any) => {
-            this._initialValue = initialValue;
-            return this.get();
+            return new Promise((resolve, _) => {
+                this.head.run(initialValue, (next: Either<Error, T>) => {
+                    this.head.shutdown();
+                    resolve(next);
+                });
+            });
         }
     }
+}
 
-    private _executeFuncStack<T> (resolve: (v: Either<Error, T>) => void, accumulator?: any) {
 
-        if (! this._funcStack.length) {
-            resolve(Either.right<Error, T>(accumulator));
-            return;
+class TryLocal <I, O> implements TryRunner<I, O> {
+
+    protected prev: TryRunner<any, I>;
+    protected next: TryRunner<O, any>
+
+    constructor (
+        protected func: TryFunction<I, O>
+    ) {}
+
+    public setPrevious (f: TryRunner<any, I>): void {
+        this.prev = f;
+    }
+
+    public setNext (f: TryRunner<O, any>): void {
+        this.next = f;
+    }
+
+    public isComplete (prevComplete: boolean) {
+        return this.next ? this.next.isComplete(prevComplete && true) : prevComplete && true;
+    }
+
+    public shutdown (): void {
+        this.next && this.next.shutdown();
+    }
+
+    public run (accumulator: I, callback: (v: Either<Error, O>) => void): void {
+
+        let isWaitingResponse = true;
+
+        const onComplete = (r: any) => {
+
+            if (! isWaitingResponse) return log.error(new Error("Complete has already been invoked."));
+
+            let resp: O = r;
+            if (r instanceof Either.Right) resp = r.get();
+            else if (r instanceof Either.Left) callback(Either.left<Error, O>(new ReferenceError("This either is Left.")));
+            else if (r instanceof Option.Some) resp = r.get();
+            else if (r instanceof Option.None) callback(Either.left<Error, O>(new ReferenceError("This option is None.")));
+            else if (r instanceof Promise) {
+                r.then((v: any) => onComplete(r)).catch((e: Error) => callback(Either.left<Error, O>(e)));
+            } else {
+                isWaitingResponse = false;
+                if (! this.next) callback(Either.right<Error, O>(resp))
+                this.next.run(resp, callback);
+            }
         }
+        const onNext = onComplete;
 
-        ((wrap: IFuncWrapper<any, any>, acc: any) => {
+        try {
 
-            try {
+            if (isGeneratorFunction(this.func)) {
 
-                let isWaitingResponse = true;
+                co(this.func.bind({Complete: onComplete, Next: onNext}, accumulator))
+                    .then((r: any) => { if (r !== undefined) onNext(r); })
+                    .catch((err: Error) => onNext(Either.left<Error, O>(err)));
 
-                let Success = (r: any) => {
-                    if (isWaitingResponse) {
-                        console.log("SUCCESS");
-                        this._executeFuncStack(resolve, r);
-                        isWaitingResponse = false;
-                    }
-                };
+            } else {
 
-                let Failure = (e: Error) => {
-                    if (isWaitingResponse) {
-                        resolve(Either.left<Error, T>(e));
-                        isWaitingResponse = false;
-                    }
-                };
-
-                // If not fork, run the script in this thread.
-                // If process.env.__TRYJS_IN_FORK, already in child process.
-                if (! wrap.isFork || !! process.env.__TRYJS_IN_FORK) {
-
-                    if (isGeneratorFunction(wrap.func)) {
-
-                        co(wrap.func.bind({Success, Failure}, accumulator))
-                            .then((r: any) => {
-                                if (r instanceof Either.Right) Success(r.get());
-                                else if (r instanceof Either.Left) Failure(new ReferenceError("This either is Left."))
-                                else if (r instanceof Option.Some) Success(r.get());
-                                else if (r instanceof Option.None) Failure(new ReferenceError("This option is None."));
-                                else if (r instanceof Promise) r.then((v: any) => Success(v)).catch((e: Error) => Failure(e))
-                                else Success(r);
-                            })
-                            .catch((err: Error) => Failure(err));
-
-                    } else {
-
-                        const r = wrap.func.call({Success, Failure}, accumulator);
-                        if (r !== undefined) {
-                            if (r instanceof Either.Right) Success(r.get());
-                            else if (r instanceof Either.Left) Failure(new ReferenceError("This either is Left."))
-                            else if (r instanceof Option.Some) Success(r.get());
-                            else if (r instanceof Option.None) Failure(new ReferenceError("This option is None."));
-                            else if (r instanceof Promise) r.then((v: any) => Success(v)).catch((e: Error) => Failure(e))
-                            else Success(r);
-                        }
-                    }
-
-                } else {
-
-                    Pool.acquire()
-                        .then((cp: Pool.IChildProcess) => {
-
-                            cp.addListener ((r: Either<Error, T>) => {
-                                (cp.isDestroyable && Pool.destroy || Pool.release)(cp);
-                                (r.isRight() && Success || Failure)(r.get());
-                                Success = Failure = function () {};
-                            });
-
-                            cp.send(wrap.func, acc, this._callerFileName);
-                        })
-                        .catch(err => {
-                            throw err;
-                        });
-                }
-
-            } catch (err) {
-                log.error(err);
-                resolve(Either.left<Error, T>(err));
+                const r = this.func.call({Complete: onComplete, Next: onNext}, accumulator);
+                if (r !== undefined) onNext(r);
             }
 
-        })(this._funcStack.shift(), accumulator);
+        } catch (err) {
+            onNext(Either.left<Error, O>(err));
+        }
+    }
+}
+
+
+class TryFork  <I, O> extends TryLocal<I, O> {
+
+    private _currentProcess: Pool.IChildProcess;
+    private _isComplete = false;
+
+    constructor (
+        func: TryFunction<I, O>,
+        private callerFileName?: string
+    ) {
+        super(func);
+    }
+
+    public isComplete (prevComplete: boolean) {
+        return this.next ? this.next.isComplete(prevComplete && this._isComplete) : prevComplete && this._isComplete;
+    }
+
+    public shutdown (): void {
+       this._isComplete = true;
+       Pool.release(this._currentProcess);
+       this._currentProcess = null;
+       this.next && this.next.shutdown();
+    }
+
+    public run (accumulator: I, callback: (v: Either<Error, O>) => void): void {
+
+        const onNext = (r: O) => {
+            if (! this.next) return callback(Either.right<Error, O>(r))
+            this.next.run(r, callback);
+        };
+
+        const onFailure = (e: Error) => {
+                callback(Either.left<Error, O>(e));
+        };
+
+        try {
+
+            if (this._currentProcess) return this._currentProcess.send(this.func, accumulator, this.callerFileName);
+
+            Pool.acquire()
+                .then((cp: Pool.IChildProcess) => {
+
+                    this._currentProcess = cp;
+
+                    cp.addListener ((r: Either<Error, O>) => {
+
+                        if (cp.isDestroyable) {
+                            this._currentProcess = null;
+                            Pool.destroy(cp);
+                        } else if (cp.isComplete) {
+                            this._currentProcess = null;
+                            this._isComplete = true;
+                            Pool.release(cp);
+                            r.isRight() ? onNext(r.getRight()) : onFailure(r.getLeft());
+                        } else {
+                            r.isRight() ? onNext(r.getRight()) : onFailure(r.getLeft());
+                        }
+                    });
+
+                    cp.send(this.func, accumulator, this.callerFileName);
+                })
+                .catch(err => {
+                    throw err;
+                });
+
+        } catch (err) {
+            onFailure(err);
+        }
     }
 }
 

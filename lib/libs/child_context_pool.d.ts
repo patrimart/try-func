@@ -2,6 +2,7 @@ import { TryFunction } from "../try";
 import { Either } from "../either";
 export interface IChildProcess {
     isDestroyable: boolean;
+    isComplete: boolean;
     addListener<T>(f: (r: Either<Error, T>) => void): void;
     send<T, U>(func: TryFunction<T, U>, data: any, callerFileName: string): void;
     release(): void;

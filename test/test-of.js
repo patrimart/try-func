@@ -15,10 +15,11 @@ Try.ofFork(() => {
     // Promise.reject(new Error("Promise Boom"));
     setTimeout(() => {
         // Promise.reject(new Error("Promise Boom"));
-        Success('OK Result '+ Double(1));
+        // Complete('OK Result '+ Double(1));
     }, 1000);
 
-    // return 'OK Result '+ Double(2);
+    return 'OK Result '+ Double(2);
+
 }).andThenFork(function* (v) {
 
     // yield Promise.reject(new Error("Promise BOOM!"));
@@ -29,23 +30,25 @@ Try.ofFork(() => {
 
 
 
-// Non-fork must be annon-funcs, not lambdas, if using this.Success/Failure.
+// Non-fork must be annon-funcs, not lambdas, if using this.Complete/Failure.
 // Is closure.
 Try.of(function () {
 
-    // console.log("Success =>", this, this.Success);
+    // console.log("Complete =>", this, this.Complete);
 
     var Double = require('./utils/math').Double;
 
     setImmediate(() => {
         //throw new Error('ERROR');
-        this.Success(Double(outter)); // Subsequent callbacks ignored.
+        // this.Next(Double(outter));
+        // this.Complete(Double(outter)); // Subsequent callbacks ignored.
     });
 
     return Double(2);
 
 }).andThenFork(v => {
-    return Either.Right(v * v);
+    var Either = require('../lib').Either;
+    return Either.right(v * v);
 }).andThenFork(v => {
 
     return new Promise((resolve, reject) => {

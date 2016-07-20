@@ -28,7 +28,7 @@ export abstract class Either <L, R> {
      * Throws a ReferenceError.
      */
     public get (): R {
-        throw new ReferenceError("This is a Left either.")
+        throw new ReferenceError("This either is Left.")
     }
 
     /**
@@ -157,7 +157,7 @@ export namespace Either {
          * @returns {R}
          */
         public getOrThrow (err?: Error): R {
-            throw err || new ReferenceError("This is a Left either.")
+            throw err || new ReferenceError("This either is Left.")
         }
 
         /**

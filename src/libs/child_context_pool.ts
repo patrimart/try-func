@@ -1,5 +1,6 @@
 
 import * as child_process from "child_process";
+import * as os from "os";
 
 import {Pool} from "generic-pool";
 import {TryFunction} from "../try";
@@ -11,6 +12,7 @@ import * as log from "./log";
  */
 export interface IChildProcess {
     isDestroyable: boolean;
+    isComplete: boolean;
     addListener <T> (f: (r: Either<Error, T>) => void): void;
     send <T, U> (func: TryFunction<T, U>, data: any, callerFileName: string): void;
     release (): void;
@@ -25,18 +27,23 @@ class ChildProcess implements IChildProcess {
     private _child: child_process.ChildProcess;
     private _emitter: (r: Either<Error, any>) => void;
     private _isDestroyable = false;
+    private _isComplete = false;
 
     public constructor () {
 
         this._child = child_process.fork(`${__dirname}/child_context`, ["special"], { env: { __TRYJS_IN_FORK: true, TRYJS_DEBUG: process.env.TRYJS_DEBUG}});
 
-        this._child.on("message", (m: [string, any, boolean]) => {
+        // Error, data, isDestroyable, isComplete
+        this._child.on("message", (m: [string, any, boolean, boolean]) => {
             if (this._emitter) {
                 this._isDestroyable = m[2];
-                if (m[0]) {
-                    this._emitter(Either.left<Error, any>(new Error(m[0])));
-                } else {
-                    this._emitter(Either.right<Error, any>(m[1]));
+                this._isComplete = m[3];
+                if (! this._isComplete) {
+                    if (m[0]) {
+                        this._emitter(Either.left<Error, any>(new Error(m[0])));
+                    } else {
+                        this._emitter(Either.right<Error, any>(m[1]));
+                    }
                 }
             }
         });
@@ -59,8 +66,12 @@ class ChildProcess implements IChildProcess {
         return this._isDestroyable;
     }
 
+    public get isComplete (): boolean {
+        return this._isComplete;
+    }
+
     public send <T, U> (func: TryFunction<T, U>, data: any, callerFileName: string): void {
-        this._child && this._child.send({func: func.toString(), data: JSON.stringify(data), callerFileName});
+        this._child && this._child.send({func: func.toString(), data: data, callerFileName});
     }
 
     public addListener <T> (f: (r: Either<Error, T>) => void) {
@@ -68,10 +79,13 @@ class ChildProcess implements IChildProcess {
     }
 
     public release (): void {
+        this._child && this._child.removeAllListeners();
         this._emitter = null;
     }
 
     public destroy (): void {
+        this._emitter = null;
+        this._child && this._child.removeAllListeners();
         this._child && this._child.kill();
         this._child = null;
     }
@@ -81,11 +95,11 @@ const pool = new Pool<IChildProcess>({
     name              : "child_context_pool",
     create            : (callback) => callback(null, new ChildProcess()),
     destroy           : (cp) => cp.destroy(),
-    max               : process.env.TRYJS_FORK_POOL_MAX || 10,
-    min               : process.env.TRYJS_FORK_POOL_MIN || 2,
+    max               : +process.env.TRYJS_FORK_POOL_MAX || os.cpus().length * 2,
+    min               : +process.env.TRYJS_FORK_POOL_MIN || Math.ceil(os.cpus().length / 2),
     refreshIdle       : true,
-    idleTimeoutMillis : process.env.TRYJS_FORK_POOL_IDLE || 9999,
-    reapIntervalMillis: process.env.TRYJS_FORK_POOL_REAP || 3333,
+    idleTimeoutMillis : +process.env.TRYJS_FORK_POOL_IDLE || 9999,
+    reapIntervalMillis: +process.env.TRYJS_FORK_POOL_REAP || 3333,
     returnToHead      : true,
     log               : false,
 });

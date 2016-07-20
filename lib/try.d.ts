@@ -1,18 +1,17 @@
 import { Either } from "./either";
 import { Option } from "./option";
-export declare type TryFunctionReturn<U extends string | number | boolean | {} | void> = Promise<U> | Either<Error, U> | Option<U> | string | number | boolean | Array<U> | {} | void;
+export declare type TryFunctionReturn<T> = Promise<T> | Either<Error, T> | Option<T> | T;
 export interface TryFunction<T, U extends TryFunctionReturn<U>> extends Function {
-    name: string;
+    name?: string;
     length: number;
     prototype: any;
-    constructor(v?: T): U;
 }
 export interface Try<T> {
-    andThen<I, O>(func: TryFunction<I, O>): Try<T>;
-    andThenFork<I, O>(func: TryFunction<I, O>): Try<T>;
+    andThen<I, O>(func: TryFunction<I, O>): this;
+    andThenFork<I, O>(func: TryFunction<I, O>): this;
     get(): Promise<Either<Error, T>>;
-    getOrElse(func: TryFunction<void, T>): Promise<Either<Error, T>>;
-    getOrElseFork(func: TryFunction<void, T>): Promise<Either<Error, T>>;
+    getOrElse<I>(func: TryFunction<void, T>, value?: I): Promise<Either<Error, T>>;
+    getOrElseFork<I>(func: TryFunction<void, T>, value?: I): Promise<Either<Error, T>>;
     getOrThrow(err?: Error): Promise<Either<Error, T>>;
     toCurried(): (initialValue?: any) => Promise<Either<Error, T>>;
 }

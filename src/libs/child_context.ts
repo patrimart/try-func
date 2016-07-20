@@ -1,42 +1,73 @@
 
 const path = require("path");
 const vm = require("vm");
+const co = require("co");
 
 import {Either} from "../either";
 import {Option} from "../option";
 import * as log from "./log";
 
-declare var global: any;
-
 const ___compiledScriptCache___: {[hash: string]: any} = {};
 const ___origRequire___ = require;
 const ___that___ = this;
 
-// Send Either.Right(r) with destroy flag.
-// Remove callbacks incase of double call.
-function Success (r: any) {
-    global.Success = global.Failure = function () {};
-    process.send([null, r, false]);
+// Send Either.Right(r) with destroy and complete flags.
+function _onComplete () {
+    process.send([undefined, undefined, false, true]);
 }
 
-// Send Either.Left(e) with destroy flag.
-// Remove callbacks incase of double call.
-function Failure (e: Error) {
-    global.Success = global.Failure = function () {};
+// Send Either.Right(r) with destroy and complete flags.
+function _onNext (r: any) {
+    process.send([undefined, r, false, false]);
+}
+
+// Send Either.Left(e) with destroy and complete flags.
+function _onFailure (e: Error) {
     log.error(e);
-    process.send([e.message, null, false]);
+    process.send([e.message, undefined, false, false]);
+}
+
+// Send Either.Left(e) with destroy and complete flags.
+function _onFatalException (e: Error) {
+    log.error(e);
+    process.send([e.message, undefined, true, false]);
+    process.exit();
 }
 
 // Listen for messages from parent.
 process.on("message", function (message: {func: string, data: any, callerFileName: string}) {
 
+    let isComplete = false;
+
+    function onFailure (err: Error) {
+        _onFailure(err);
+    }
+    function onComplete (r?: any) {
+        onNext(r);
+        process.removeListener("unhandledRejection", onFailure);
+        _onComplete();
+    };
+    function onNext (r: any) {
+
+        if (isComplete) return _onFatalException(new Error("Complete has already been invoked."));
+
+        if      (r instanceof Either.Right) onNext(r.get());
+        else if (r instanceof Either.Left)  _onFailure(new ReferenceError("This either is Left."))
+        else if (r instanceof Option.Some)  onNext(r.get());
+        else if (r instanceof Option.None)  _onFailure(new ReferenceError("This option is None."));
+        else if (r instanceof Promise)      r.then((v: any) => onNext(v)).catch((e: Error) => _onFailure(e))
+        else    {
+            isComplete = true;
+            _onNext(r);
+        }
+    };
+
     try {
 
-        let isGenerator = message.func.startsWith("function*");
+        // Send unhandled Promise catch with destroy flag.
+        process.on("unhandledRejection", onFailure);
 
-        let code = isGenerator ?
-                `co((${message.func}).bind(this, ${JSON.stringify(message.data)}))` :
-                `(${message.func}(${JSON.stringify(message.data)}))`,
+        let code = `(function (require, Complete, Next, arg) { return (${message.func})(arg); })`,
             hash = ___hash___(code),
             script: any;
 
@@ -48,59 +79,34 @@ process.on("message", function (message: {func: string, data: any, callerFileNam
         }
 
         // Override require() to handle cwd discrepency.
-        global.require = function (): any {
+        const wrapRequire = Object.assign(function require (): any {
             arguments[0] = path.resolve(path.parse(message.callerFileName).dir, arguments[0]);
             return ___origRequire___.apply(___that___, arguments);
-        };
+        }, require);
 
-        global.Success = Success;
-        global.Failure = Failure;
-
+        const isGenerator = message.func.startsWith("function*");
         if (isGenerator) {
 
-            global.co = require("co");
-            (script.runInNewContext(global) as Promise<any>)
-                .then((r: any) => {
-                    if (r !== undefined) {
-                        if (r instanceof Either.Right) Success(r.get());
-                        else if (r instanceof Either.Left) Failure(new ReferenceError("This either is Left."))
-                        else if (r instanceof Option.Some) Success(r.get());
-                        else if (r instanceof Option.None) Failure(new ReferenceError("This option is None."));
-                        else if (r instanceof Promise) r.then((v: any) => Success(v)).catch((e: Error) => Failure(e))
-                        else Success(r);
-                    }
-                })
-                .catch((err: Error) => Failure(err));
+            (co(script.runInThisContext()(wrapRequire, onComplete, onNext, message.data)) as Promise<any>)
+                .then((r: any) => { if (r !== undefined) onComplete(r); })
+                .catch((err: Error) => onComplete(Either.left(err)));
 
         } else {
 
-            const r = script.runInNewContext(global);
-            if (r !== undefined) {
-                if (r instanceof Either.Right) Success(r.get());
-                else if (r instanceof Either.Left) Failure(new ReferenceError("This either is Left."))
-                else if (r instanceof Option.Some) Success(r.get());
-                else if (r instanceof Option.None) Failure(new ReferenceError("This option is None."));
-                else if (r instanceof Promise) r.then((v: any) => Success(v)).catch((e: Error) => Failure(e))
-                else Success(r);
-            }
+            const r = script.runInThisContext()(wrapRequire, onComplete, onNext, message.data);
+            if (r !== undefined) onComplete(r);
         }
 
     } catch (err) {
-        Failure(err);
+        _onFailure(err);
+        onComplete();
     }
 });
-
-// Send unhandled Promise catch with destroy flag.
-process.on("unhandledRejection", Failure);
 
 // Catch all exceptions.
 // Send Either.Left(e) with no destroy flag.
 // Exit process.
-process.on("uncaughtException", (e: Error) => {
-    log.error(e);
-    process.send([e.message, null, true]);
-    process.exit();
-});
+process.on("uncaughtException", _onFatalException);
 
 /**
  * https://github.com/darkskyapp/string-hash
