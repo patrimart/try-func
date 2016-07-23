@@ -1,3 +1,4 @@
+
 var Either = require('../lib/either').Either;
 var Try = require('../lib/try').Try;
 
@@ -11,7 +12,7 @@ for (var i = 0; i < 10; i++) {
 
     // Fork can be annon or lambda.
     // Is NOT closure.
-    Try.ofFork(() => {
+    Try.ofFork(v => {
 
         var Double = require('./utils/math').Double;
         // Promise.reject(new Error("Promise Boom"));
@@ -20,8 +21,13 @@ for (var i = 0; i < 10; i++) {
             // Complete('OK Result '+ Double(1));
         }, 1000);
 
-        return 'OK Result '+ Double(2);
+        return 'OK Result '+ Double(v);
 
+    }, i).andThenFork(function* (v) {
+
+        // yield Promise.reject(new Error("Promise BOOM!"));
+        var r = yield Promise.resolve(v + ' ...andThen.');
+        return r;
     }).andThenFork(function* (v) {
 
         // yield Promise.reject(new Error("Promise BOOM!"));
@@ -45,20 +51,20 @@ for (var i = 0; i < 10; i++) {
             // this.Complete(Double(outter)); // Subsequent callbacks ignored.
         });
 
-        return Double(2);
+        return Double(i);
 
-    // }).andThenFork(v => {
+    }).andThenFork(v => {
 
-    //     var Either = require('../lib/either').Either;
-    //     return Either.right(v * v);
+        var Either = require('../lib/either').Either;
+        return Either.right(v * v);
 
-    // }).andThenFork(v => {
+    }).andThenFork(v => {
 
-    //     return new Promise((resolve, reject) => {
-    //         resolve(v * v);
-    //     });
+        return new Promise((resolve, reject) => {
+            resolve(v * v);
+        });
 
-    }).andThen(function* (v) {
+    }).andThenFork(function* (v) {
 
         // yield Promise.reject(new Error("Promise BOOM!"));
         var r = yield Promise.resolve('abc'+ v);

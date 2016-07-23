@@ -7,66 +7,50 @@ import {Either} from "../either";
 import {Option} from "../option";
 import * as log from "./log";
 
+import * as Queue from "./child_context_queue";
+
 const ___compiledScriptCache___: {[hash: string]: any} = {};
 const ___origRequire___ = require;
 const ___that___ = this;
 
-// Send Either.Right(r) with destroy and complete flags.
-function _onComplete () {
-    process.send([undefined, undefined, false, true]);
-}
-
-// Send Either.Right(r) with destroy and complete flags.
-function _onNext (r: any) {
-    // console.log(">>>>", r);
-    process.send([undefined, r, false, false]);
-}
-
-// Send Either.Left(e) with destroy and complete flags.
-function _onFailure (e: Error) {
-    log.error(e);
-    process.send([e.message, undefined, false, false]);
-}
-
-// Send Either.Left(e) with destroy and complete flags.
-function _onFatalException (e: Error) {
-    log.error(e);
-    process.send([e.message, undefined, true, false]);
-    process.exit();
-}
-
 // Listen for messages from parent.
-process.on("message", function (message: {func: string, data: any, callerFileName: string}) {
-    // console.log("=", process.pid, message.data);
+process.on("message", function (message: any) {
+    if (message === "REQUEST_NEXT_ITEM") return;
+    onMessage(message);
+});
+
+function onMessage (message: {func: string, data: any, callerFileName: string}) {
+
     let isComplete = false;
 
     function onFailure (err: Error) {
-        _onFailure(err);
+        Queue.onFailure(err);
     }
+
     function onComplete (r?: any) {
-        // console.log("C>>", r);
-        onNext(r);
-        process.removeListener("unhandledRejection", onFailure);
-        _onComplete();
-    };
-    function onNext (r: any) {
-        // console.log("N>>", r);
+        onNext(r, true);
+    }
 
-        if (isComplete) return _onFatalException(new Error("Complete has already been invoked."));
+    function onNext (r: any, doComplete?: boolean) {
 
-        if      (r instanceof Either.Right) onNext(r.get());
-        else if (r instanceof Either.Left)  _onFailure(new ReferenceError("This either is Left."))
-        else if (r instanceof Option.Some)  onNext(r.get());
-        else if (r instanceof Option.None)  _onFailure(new ReferenceError("This option is None."));
-        else if (r instanceof Promise)      r.then((v: any) => onNext(v)).catch((e: Error) => _onFailure(e))
-        else    {
-            isComplete = true;
-            _onNext(r);
+        if (isComplete) return Queue.onFatalException(new Error("Complete has already been invoked."), () => process.exit(1));
+
+        if      (r instanceof Either.Right) onNext(r.get(), doComplete);
+        else if (r instanceof Either.Left)  Queue.onFailure(new ReferenceError("This either is Left."))
+        else if (r instanceof Option.Some)  onNext(r.get(), doComplete);
+        else if (r instanceof Option.None)  Queue.onFailure(new ReferenceError("This option is None."));
+        else if (r instanceof Promise)      r.then((v: any) => onNext(v, doComplete)).catch((e: Error) => onFailure(e))
+        else {
+            Queue.onNext(r);
+            if (doComplete) {
+                process.removeListener("unhandledRejection", onFailure);
+                isComplete = true;
+                Queue.onComplete();
+            }
         }
     };
 
     try {
-
         // Send unhandled Promise catch with destroy flag.
         process.on("unhandledRejection", onFailure);
 
@@ -101,21 +85,20 @@ process.on("message", function (message: {func: string, data: any, callerFileNam
         }
 
     } catch (err) {
-        _onFailure(err);
-        onComplete();
+        Queue.onFailure(err);
     }
-});
+}
 
 // Catch all exceptions.
 // Send Either.Left(e) with no destroy flag.
 // Exit process.
-process.on("uncaughtException", _onFatalException);
+process.on("uncaughtException", Queue.onFatalException);
 
 /**
  * https://github.com/darkskyapp/string-hash
  */
 function ___hash___ (str: string): number {
-  let hash = 5381, i = str.length
-  while (i) hash = (hash * 33) ^ str.charCodeAt(--i)
-  return hash >>> 0;
+    let hash = 5381, i = str.length
+    while (i) hash = (hash * 33) ^ str.charCodeAt(--i)
+    return hash >>> 0;
 }

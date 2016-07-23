@@ -27,7 +27,7 @@ export interface IChildProcess {
 class ChildProcess implements IChildProcess {
 
     private _child: child_process.ChildProcess;
-    private _emitter: (r: Either<Error, any>) => void;
+    private _emitter: (r: Either<Error, any>, isComplete?: boolean) => void;
     private _isDestroyable = false;
     private _isComplete = false;
 
@@ -37,13 +37,22 @@ class ChildProcess implements IChildProcess {
 
         // Error, data, isDestroyable, isComplete
         this._child.on("message", (m: [string, any, boolean, boolean]) => {
-            // console.log("SDSDSD", m);
+
+            // console.log("--->", m);
+
             if (this._emitter) {
+
                 this._isDestroyable = m[2];
                 this._isComplete = m[3];
+
                 if (this._isComplete) {
-                    this._emitter(null);
+                    this._emitter(null, true);
+                    release(this);
+                } else if (this._isDestroyable) {
+                    this._emitter(null, true);
+                    destroy(this);
                 } else {
+                    this._child.send("REQUEST_NEXT_ITEM");
                     if (m[0]) {
                         this._emitter(Either.left<Error, any>(new Error(m[0])));
                     } else {
@@ -53,12 +62,12 @@ class ChildProcess implements IChildProcess {
             }
         });
 
-        this._child.on("error", (err: Error) => {
-            log.error(err);
-            this._isDestroyable = true;
-            this._isComplete = true;
-            if (this._emitter) this._emitter(Either.left<Error, any>(err));
-        });
+        // this._child.on("error", (err: Error) => {
+        //     log.error(err);
+        //     this._isDestroyable = true;
+        //     this._isComplete = true;
+        //     if (this._emitter) this._emitter(Either.left<Error, any>(err));
+        // });
 
         this._child.on("exit", (code: number, signal: string) => {
             this._isDestroyable = true;
@@ -124,18 +133,13 @@ const pool = new Pool<IChildProcess>({
     log               : false,
 });
 
-let count: number[] = [];
-
 /**
  * 
  */
 export function acquire (): Promise<any> {
 
     return new Promise ((resolve, reject) => {
-        // console.log("- - REQUEST", pool.availableObjectsCount(), pool.waitingClientsCount());
         pool.acquire((err, cp) => {
-            count.push(cp.pid);
-            // console.log("- - - ACQUIRE", err, cp.pid, JSON.stringify(count));
             if (err) return reject(err)
             cp.reset();
             resolve(cp);
@@ -147,8 +151,6 @@ export function acquire (): Promise<any> {
  * 
  */
 export function release (cp: IChildProcess) {
-    count.splice(count.indexOf(cp.pid), 1);
-    // console.log("RELEASE", cp.pid, JSON.stringify(count));
     cp.release();
     pool.release(cp);
 }
@@ -157,8 +159,6 @@ export function release (cp: IChildProcess) {
  * 
  */
 export function destroy (cp: IChildProcess) {
-    count.splice(count.indexOf(cp.pid), 1);
-    // console.log("DESTROY", cp.pid, JSON.stringify(count));
     pool.destroy(cp);
 }
 

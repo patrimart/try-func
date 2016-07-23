@@ -110,7 +110,7 @@ interface TryRunner <I, O> {
 
     setNext (f: TryRunner<O, any>): void;
 
-    run (accumulator: I, onNext: (v: Either<Error, O>) => void): void;
+    run (accumulator: I, callback: (v: Either<Error, O>) => void): void;
 
     isComplete (prevComplete: boolean): boolean;
 
@@ -154,7 +154,7 @@ class TryClass<T> implements Try<T> {
         return new Promise((resolve, _) => {
             this.head.run(this.initialValue, (next: Either<Error, T>) => {
                 this.head.complete();
-                resolve(next);
+                if (next) resolve(next);
             });
         });
     }
@@ -262,18 +262,19 @@ class TryLocal <I, O> implements TryRunner<I, O> {
 
             let resp: O = r;
             if (r instanceof Either.Right) resp = r.get();
-            else if (r instanceof Either.Left) callback(Either.left<Error, O>(new ReferenceError("This either is Left.")));
+            else if (r instanceof Either.Left) return callback(Either.left<Error, O>(new ReferenceError("This either is Left.")));
             else if (r instanceof Option.Some) resp = r.get();
-            else if (r instanceof Option.None) callback(Either.left<Error, O>(new ReferenceError("This option is None.")));
+            else if (r instanceof Option.None) return callback(Either.left<Error, O>(new ReferenceError("This option is None.")));
             else if (r instanceof Promise) {
-                r.then((v: any) => onComplete(r)).catch((e: Error) => callback(Either.left<Error, O>(e)));
+                return r.then((v: any) => onComplete(r)).catch((e: Error) => callback(Either.left<Error, O>(e)));
+            }
+
+            isWaitingResponse = false;
+
+            if (this.next) {
+                this.next.run(resp, callback);
             } else {
-                isWaitingResponse = false;
-                if (this.next) {
-                    this.next.run(resp, callback);
-                } else {
-                     callback(Either.right<Error, O>(resp))
-                }
+                callback(Either.right<Error, O>(resp));
             }
         }
         const onNext = onComplete;
@@ -316,12 +317,13 @@ class TryFork  <I, O> extends TryLocal<I, O> {
     }
 
     public complete (): void {
+
         if (! this._isComplete) {
+            this._isComplete = true;
             if (this._currentProcess) {
-                Pool.release(this._currentProcess);
+                Pool.destroy(this._currentProcess);
                 this._currentProcess = null;
             }
-            this._isComplete = true;
             if (this.next) this.next.complete();
         }
     }
@@ -341,41 +343,24 @@ class TryFork  <I, O> extends TryLocal<I, O> {
 
         try {
 
-            // console.log();
-            // console.log("-->", this._id, accumulator);
-
-            let lastResult: Either<Error, O> = null;
-
             if (this._currentProcess) return this._currentProcess.send(this.func, accumulator, this.callerFileName);
 
             Pool.acquire()
                 .then((cp: Pool.IChildProcess) => {
-
-                    // console.log("\tACQUIRE", this._id, cp.pid);
 
                     this._isComplete = false;
                     this._currentProcess = cp;
 
                     cp.addListener ((r: Either<Error, O>) => {
 
-                        // console.log("<--", this._id, r, cp.isComplete, cp.isDestroyable, cp.pid);
-
                         if (cp.isDestroyable) {
                             this._currentProcess = null;
-                            Pool.destroy(cp);
                         } else if (cp.isComplete) {
                             this._currentProcess = null;
                             this._isComplete = true;
-                            lastResult.isRight() ? onNext(lastResult.getRight()) : onFailure(lastResult.getLeft());
-                            Pool.release(cp);
                         }
 
-                        lastResult = r;
-
-                        if (this.next) {
-                            if (r instanceof Either)
-                                r.isRight() ? onNext(r.getRight()) : onFailure(r.getLeft());
-                        }
+                        if (r instanceof Either) r.isRight() ? onNext(r.getRight()) : onFailure(r.getLeft());
                     });
 
                     cp.send(this.func, accumulator, this.callerFileName);
