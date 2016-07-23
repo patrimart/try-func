@@ -3,6 +3,9 @@ import {Either} from "./either";
 import {Option} from "./option";
 import * as log from "./libs/log";
 
+/**
+ * The return type of the user function.
+ */
 export type TryFunctionReturn<T> = Promise<T> | Either<Error, T> | Option<T> | T;
 
 
@@ -96,30 +99,18 @@ import * as Pool from "./libs/child_context_pool";
 import * as path from "path";
 
 
-interface IFuncWrapper<T, U> {
-    isFork: boolean;
-    func: TryFunction<T, U>;
-}
-
-
 interface TryRunner <I, O> {
-
     id: string;
-
     setPrevious (f: TryRunner<any, I>): void;
-
     setNext (f: TryRunner<O, any>): void;
-
     run (accumulator: I, callback: (v: Either<Error, O>) => void): void;
-
     isComplete (prevComplete: boolean): boolean;
-
     complete (): void;
 }
 
 
 /**
- * 
+ * The TryClass manages the Try function flow and execution.
  */
 class TryClass<T> implements Try<T> {
 
@@ -221,7 +212,10 @@ class TryClass<T> implements Try<T> {
     }
 }
 
-
+/**
+ * The TryLocal class manages an individual non-forked user function.
+ * TryLocals are always marked as complete.
+ */
 class TryLocal <I, O> implements TryRunner<I, O> {
 
     protected _id = Math.random().toString(36).substr(2);
@@ -262,7 +256,7 @@ class TryLocal <I, O> implements TryRunner<I, O> {
 
             let resp: O = r;
             if (r instanceof Either.Right) resp = r.get();
-            else if (r instanceof Either.Left) return callback(Either.left<Error, O>(new ReferenceError("This either is Left.")));
+            else if (r instanceof Either.Left) return callback(r); // Either.left<Error, O>(new ReferenceError("This either is Left.")));
             else if (r instanceof Option.Some) resp = r.get();
             else if (r instanceof Option.None) return callback(Either.left<Error, O>(new ReferenceError("This option is None.")));
             else if (r instanceof Promise) {
@@ -272,9 +266,9 @@ class TryLocal <I, O> implements TryRunner<I, O> {
             isWaitingResponse = false;
 
             if (this.next) {
-                this.next.run(resp, callback);
+                setImmediate(() => this.next.run(resp, callback));
             } else {
-                callback(Either.right<Error, O>(resp));
+                setImmediate(() => callback(Either.right<Error, O>(resp)));
             }
         }
         const onNext = onComplete;
@@ -299,7 +293,9 @@ class TryLocal <I, O> implements TryRunner<I, O> {
     }
 }
 
-
+/**
+ * The TryFork class manages an individual forked user function.
+ */
 class TryFork  <I, O> extends TryLocal<I, O> {
 
     private _currentProcess: Pool.IChildProcess;
@@ -316,6 +312,9 @@ class TryFork  <I, O> extends TryLocal<I, O> {
         return this.next ? this.next.isComplete(prevComplete && this._isComplete) : prevComplete && this._isComplete;
     }
 
+    /**
+     * Force the forked child process to die.
+     */
     public complete (): void {
 
         if (! this._isComplete) {
@@ -330,6 +329,7 @@ class TryFork  <I, O> extends TryLocal<I, O> {
 
     public run (accumulator: I, callback: (v: Either<Error, O>) => void): void {
 
+        // Send the user function response down the flow, or send final response.
         const onNext = (r: O) => {
             if (this.next)
                 this.next.run(r, callback);
@@ -337,20 +337,24 @@ class TryFork  <I, O> extends TryLocal<I, O> {
                 callback(Either.right<Error, O>(r));
         };
 
+        // Send the error as the final response, skipping all subsequent user funtions.
         const onFailure = (e: Error) => {
             callback(Either.left<Error, O>(e));
         };
 
         try {
 
+            // If a child process has aleady been acquired, send the user function to it.
             if (this._currentProcess) return this._currentProcess.send(this.func, accumulator, this.callerFileName);
 
+            // Acquire a pooled child process, or block until available.
             Pool.acquire()
                 .then((cp: Pool.IChildProcess) => {
 
                     this._isComplete = false;
                     this._currentProcess = cp;
 
+                    // Listen for user function responses from the child process.
                     cp.addListener ((r: Either<Error, O>) => {
 
                         if (cp.isDestroyable) {
@@ -359,23 +363,31 @@ class TryFork  <I, O> extends TryLocal<I, O> {
                             this._currentProcess = null;
                             this._isComplete = true;
                         }
-
+                        // Send the user function response down the flow.
                         if (r instanceof Either) r.isRight() ? onNext(r.getRight()) : onFailure(r.getLeft());
                     });
 
+                    // Send the user function to the child process for execution.
                     cp.send(this.func, accumulator, this.callerFileName);
                 })
+                // If the pool fails, let the user know. This should never happen.
                 .catch(err => {
-                    throw err;
+                    log.info("The child process pool failed. This error is likely fatal. Please submit a bug report.");
+                    log.error(err);
+                    onFailure(err);
                 });
 
-        } catch (err) {
+        }
+        // Catch an unexpected error. This should never happen.
+        catch (err) {
+            log.info("The Try lib failed to execute the user function. This error is likely fatal. Please submit a bug report.");
+            log.error(err);
             onFailure(err);
         }
     }
 }
 
-
+// For convenience to avoid lint errors.
 declare var Error: any;
 
 /**
@@ -405,6 +417,9 @@ function _getCallerFile() {
     return callerfile;
 }
 
+/**
+ * Determine if the user function is a generator (function* () {}).
+ */
 function isGeneratorFunction(obj: any) {
     const constructor = obj.constructor;
     if (! constructor) return false;

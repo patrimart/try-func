@@ -1,14 +1,19 @@
+/**
+ * This module instantiates and manages the child context pool.
+ */
 
 import * as child_process from "child_process";
 import * as os from "os";
 
+// A 3rd party dependency. Importing this spawns min child processes.
 import {Pool} from "generic-pool";
+
 import {TryFunction} from "../try";
 import {Either} from "../either";
 import * as log from "./log";
 
 /**
- * 
+ * The interface for the IChildProcess.
  */
 export interface IChildProcess {
     pid: number;
@@ -22,36 +27,40 @@ export interface IChildProcess {
 }
 
 /**
- * 
+ * The ChildProcess class is a wrapper around a forked child process.
+ * It will manage the lifecycle of a child process, while allowing
+ * external influence to release or destroy.
  */
 class ChildProcess implements IChildProcess {
 
     private _child: child_process.ChildProcess;
-    private _emitter: (r: Either<Error, any>, isComplete?: boolean) => void;
+    private _emitter: (r: Either<Error, any>) => void;
     private _isDestroyable = false;
     private _isComplete = false;
 
     public constructor () {
 
+        // Fork a new child process with necessary env vars.
         this._child = child_process.fork(`${__dirname}/child_context`, ["special"], { env: { __TRYJS_IN_FORK: true, TRYJS_DEBUG: process.env.TRYJS_DEBUG}});
 
         // Error, data, isDestroyable, isComplete
         this._child.on("message", (m: [string, any, boolean, boolean]) => {
 
-            // console.log("--->", m);
-
+            // If the emitter is gone, release or destroy has been invoked.
+            // Do not attempt to send additional repsonses. Indicates a problem.
             if (this._emitter) {
 
                 this._isDestroyable = m[2];
                 this._isComplete = m[3];
 
+                // If complete or destroyable, release or destroy the process and inform the Try.
                 if (this._isComplete) {
-                    this._emitter(null, true);
                     release(this);
                 } else if (this._isDestroyable) {
-                    this._emitter(null, true);
                     destroy(this);
-                } else {
+                }
+                // Else, send the response and prompt for the next.
+                else {
                     this._child.send("REQUEST_NEXT_ITEM");
                     if (m[0]) {
                         this._emitter(Either.left<Error, any>(new Error(m[0])));
@@ -60,52 +69,80 @@ class ChildProcess implements IChildProcess {
                     }
                 }
             }
+            // Log error for attempting to send responses after complete or destroy.
+            else {
+                log.info(`The following message was received from a child process that has been released back to` +
+                    `the pool (${this._isComplete}) or scheduled for destruction (${this._isDestroyable}). ` +
+                    `This generally indicates a misbehaving user function.`);
+                log.info(m[0] ? m[0] : `Error: ${JSON.stringify(m[1])}`);
+            }
         });
 
-        // this._child.on("error", (err: Error) => {
-        //     log.error(err);
-        //     this._isDestroyable = true;
-        //     this._isComplete = true;
-        //     if (this._emitter) this._emitter(Either.left<Error, any>(err));
-        // });
-
+        // If child exits unexpectedly, send warning to Try.
         this._child.on("exit", (code: number, signal: string) => {
             this._isDestroyable = true;
             this._isComplete = true;
-            if (this._emitter) this._emitter(Either.left<Error, any>(new Error(`child_process exit(${code}, ${signal})`)));
+            if (this._emitter) {
+                this._emitter(Either.left<Error, any>(new Error(`child_process exit(${code}, ${signal})`)));
+            }
             this._child = null;
         });
     }
 
+    /**
+     * Returns the process ID of this child process.
+     */
     public get pid (): number {
-        return this._child && this._child.pid;
+        return +(this._child && this._child.pid);
     }
 
+    /**
+     * Returns if this process has been marked for destruction.
+     */
     public get isDestroyable (): boolean {
         return this._isDestroyable;
     }
 
+    /**
+     * Returns if this process has been marked as completed.
+     */
     public get isComplete (): boolean {
         return this._isComplete;
     }
 
+    /**
+     * Send a user function and data to this process.
+     * @param {TryFunction<T, U>} func - the user function
+     * @param {any} data - the data to pass to the user function
+     * @param {string} callerFileName - the origin of the user function
+     */
     public send <T, U> (func: TryFunction<T, U>, data: any, callerFileName: string): void {
         if (this._child) this._child.send({func: func.toString(), data: data, callerFileName});
     }
 
+    /**
+     * Accepts one callback to receive user function responses.
+     * @param {(r: Either<Error, T>) => void} f - the user function response
+     */
     public addListener <T> (f: (r: Either<Error, T>) => void) {
         this._emitter = f;
     }
 
+    /**
+     * Marks this child process as complete.
+     */
     public release (): void {
         this._isComplete = true;
-        this._isDestroyable = false;
+        if (this._emitter) this._emitter(null);
         this._emitter = null;
     }
 
+    /**
+     * Marks this process as destroyable and kills the process.
+     */
     public destroy (): void {
         this._isDestroyable = true;
-        this._emitter = null;
+        this.release();
         if (this._child) {
             this._child.removeAllListeners();
             this._child.kill();
@@ -113,6 +150,9 @@ class ChildProcess implements IChildProcess {
         }
     }
 
+    /**
+     * Resets the process as not complete or destroyable.
+     */
     public reset (): void {
         this._isComplete = false;
         this._isDestroyable = false;
@@ -120,6 +160,7 @@ class ChildProcess implements IChildProcess {
     }
 }
 
+// Initiates the child process pool.
 const pool = new Pool<IChildProcess>({
     name              : `child_context_pool_${Math.random().toString(36).substr(2)}`,
     create            : (callback) => callback(null, new ChildProcess()),
@@ -134,7 +175,7 @@ const pool = new Pool<IChildProcess>({
 });
 
 /**
- * 
+ * Acquire a new child process, or blocks.
  */
 export function acquire (): Promise<any> {
 
@@ -148,7 +189,8 @@ export function acquire (): Promise<any> {
 }
 
 /**
- * 
+ * Release the given child process.
+ * @param {} cp - the child process to release
  */
 export function release (cp: IChildProcess) {
     cp.release();
@@ -156,7 +198,8 @@ export function release (cp: IChildProcess) {
 }
 
 /**
- * 
+ * Destroy the given child process.
+ * @param {} cp - the child process to release
  */
 export function destroy (cp: IChildProcess) {
     pool.destroy(cp);

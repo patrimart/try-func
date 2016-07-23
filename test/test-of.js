@@ -12,6 +12,8 @@ for (var i = 0; i < 10; i++) {
 
     // Fork can be annon or lambda.
     // Is NOT closure.
+    // Forks that do not "complete" hold the process. Beware pool starvation.
+    // Forks can only accept/respond with JSONable objects.
     Try.ofFork(v => {
 
         var Double = require('./utils/math').Double;

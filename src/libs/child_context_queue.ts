@@ -1,3 +1,7 @@
+/**
+ * This module is a simple message queue to handle users' functions responses.
+ * Guarantees response order.
+ */
 
 import * as log from "./log";
 
@@ -8,6 +12,8 @@ let queue: Array<queueItem> = [];
 let readyToSend = true;
 let failSendCount = 0;
 
+// Listen for "REQUEST_NEXT_ITEM" messages from the parent process.
+// If available, sends the next queued response.
 process.on("message", function (message: string) {
     readyToSend = true;
     if (message === "REQUEST_NEXT_ITEM") {
@@ -18,6 +24,11 @@ process.on("message", function (message: string) {
     }
 });
 
+/**
+ * Queues a given response and/or sends the next available response.
+ * If no response is available, sets readyToSend to true so the next
+ * queued response need not wait to send.
+ */
 function sendItem (item?: queueItem, callback?: (err: Error) => void) {
 
     if (item !== undefined) queue.push(item);
@@ -54,24 +65,24 @@ function sendItem (item?: queueItem, callback?: (err: Error) => void) {
     });
 }
 
-// Send nothing with destroy and complete flags.
+// Send nothing with complete.
 export function onComplete (callback?: (err: Error) => void) {
     setImmediate(() => sendItem([undefined, undefined, false, true], callback));
 }
 
-// Send Either.Right(r) with destroy and complete flags.
-export function onNext (r: any) {
-    setImmediate(() => sendItem([undefined, r, false, false]));
+// Send Either.Right(r).
+export function onNext (r: any, callback?: (err: Error) => void) {
+    setImmediate(() => sendItem([undefined, r, false, false], callback));
 }
 
-// Send Either.Left(e) with destroy and complete flags.
-export function onFailure (e: Error) {
+// Send Either.Left(e) with complete.
+export function onFailure (e: Error, callback?: (err: Error) => void) {
     log.error(e);
-    setImmediate(() => sendItem([e.message, undefined, false, true]));
+    setImmediate(() => sendItem([e.message, undefined, false, true], callback));
 }
 
-// Send Either.Left(e) with destroy and complete flags.
-export function onFatalException (e: Error, callback: (err: Error) => void) {
+// Send Either.Left(e) with destroy.
+export function onFatalException (e: Error, callback?: (err: Error) => void) {
     log.error(e);
     setImmediate(() => sendItem([e.message, undefined, true, false], callback));
 }

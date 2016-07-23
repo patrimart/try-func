@@ -2,8 +2,8 @@
   "name": "try-js",
   "version": "0.5.0",
   "description": "Improved JavaScript error handling, asyncronous flow and parallel processing.",
-  "main": "lib/index.js",
-  "typings": "lib/index.d.ts",
+  "main": "lib",
+  "typings": "lib",
   "directories": {
     "test": "test"
   },
