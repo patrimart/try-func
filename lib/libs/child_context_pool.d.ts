@@ -1,12 +1,14 @@
 import { TryFunction } from "../try";
 import { Either } from "../either";
 export interface IChildProcess {
+    pid: number;
     isDestroyable: boolean;
     isComplete: boolean;
     addListener<T>(f: (r: Either<Error, T>) => void): void;
     send<T, U>(func: TryFunction<T, U>, data: any, callerFileName: string): void;
     release(): void;
     destroy(): void;
+    reset(): void;
 }
 export declare function acquire(): Promise<any>;
 export declare function release(cp: IChildProcess): void;

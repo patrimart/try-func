@@ -18,6 +18,7 @@ function _onComplete () {
 
 // Send Either.Right(r) with destroy and complete flags.
 function _onNext (r: any) {
+    // console.log(">>>>", r);
     process.send([undefined, r, false, false]);
 }
 
@@ -36,18 +37,20 @@ function _onFatalException (e: Error) {
 
 // Listen for messages from parent.
 process.on("message", function (message: {func: string, data: any, callerFileName: string}) {
-
+    // console.log("=", process.pid, message.data);
     let isComplete = false;
 
     function onFailure (err: Error) {
         _onFailure(err);
     }
     function onComplete (r?: any) {
+        // console.log("C>>", r);
         onNext(r);
         process.removeListener("unhandledRejection", onFailure);
         _onComplete();
     };
     function onNext (r: any) {
+        // console.log("N>>", r);
 
         if (isComplete) return _onFatalException(new Error("Complete has already been invoked."));
 

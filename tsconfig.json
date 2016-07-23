@@ -18,7 +18,6 @@
         "./src/try.ts",
         "./src/libs/child_context_pool.ts",
         "./src/libs/child_context.ts",
-        "./src/libs/log.ts",
-        "./src/index.ts"
+        "./src/libs/log.ts"
     ]
 }

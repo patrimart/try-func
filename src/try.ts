@@ -104,6 +104,8 @@ interface IFuncWrapper<T, U> {
 
 interface TryRunner <I, O> {
 
+    id: string;
+
     setPrevious (f: TryRunner<any, I>): void;
 
     setNext (f: TryRunner<O, any>): void;
@@ -112,7 +114,7 @@ interface TryRunner <I, O> {
 
     isComplete (prevComplete: boolean): boolean;
 
-    shutdown (): void;
+    complete (): void;
 }
 
 
@@ -151,8 +153,8 @@ class TryClass<T> implements Try<T> {
 
         return new Promise((resolve, _) => {
             this.head.run(this.initialValue, (next: Either<Error, T>) => {
+                this.head.complete();
                 resolve(next);
-                // TODO Gets always complete. if (this.head.isComplete(true)) this.head.shutdown();
             });
         });
     }
@@ -211,7 +213,7 @@ class TryClass<T> implements Try<T> {
         return (initialValue?: any) => {
             return new Promise((resolve, _) => {
                 this.head.run(initialValue, (next: Either<Error, T>) => {
-                    this.head.shutdown();
+                    this.head.complete();
                     resolve(next);
                 });
             });
@@ -222,12 +224,17 @@ class TryClass<T> implements Try<T> {
 
 class TryLocal <I, O> implements TryRunner<I, O> {
 
+    protected _id = Math.random().toString(36).substr(2);
     protected prev: TryRunner<any, I>;
     protected next: TryRunner<O, any>
 
     constructor (
         protected func: TryFunction<I, O>
     ) {}
+
+    public get id () {
+        return this._id;
+    }
 
     public setPrevious (f: TryRunner<any, I>): void {
         this.prev = f;
@@ -241,8 +248,8 @@ class TryLocal <I, O> implements TryRunner<I, O> {
         return this.next ? this.next.isComplete(prevComplete && true) : prevComplete && true;
     }
 
-    public shutdown (): void {
-        this.next && this.next.shutdown();
+    public complete (): void {
+        if (this.next) this.next.complete();
     }
 
     public run (accumulator: I, callback: (v: Either<Error, O>) => void): void {
@@ -262,8 +269,11 @@ class TryLocal <I, O> implements TryRunner<I, O> {
                 r.then((v: any) => onComplete(r)).catch((e: Error) => callback(Either.left<Error, O>(e)));
             } else {
                 isWaitingResponse = false;
-                if (! this.next) callback(Either.right<Error, O>(resp))
-                this.next.run(resp, callback);
+                if (this.next) {
+                    this.next.run(resp, callback);
+                } else {
+                     callback(Either.right<Error, O>(resp))
+                }
             }
         }
         const onNext = onComplete;
@@ -305,34 +315,50 @@ class TryFork  <I, O> extends TryLocal<I, O> {
         return this.next ? this.next.isComplete(prevComplete && this._isComplete) : prevComplete && this._isComplete;
     }
 
-    public shutdown (): void {
-       this._isComplete = true;
-       Pool.release(this._currentProcess);
-       this._currentProcess = null;
-       this.next && this.next.shutdown();
+    public complete (): void {
+        if (! this._isComplete) {
+            if (this._currentProcess) {
+                Pool.release(this._currentProcess);
+                this._currentProcess = null;
+            }
+            this._isComplete = true;
+            if (this.next) this.next.complete();
+        }
     }
 
     public run (accumulator: I, callback: (v: Either<Error, O>) => void): void {
 
         const onNext = (r: O) => {
-            if (! this.next) return callback(Either.right<Error, O>(r))
-            this.next.run(r, callback);
+            if (this.next)
+                this.next.run(r, callback);
+            else
+                callback(Either.right<Error, O>(r));
         };
 
         const onFailure = (e: Error) => {
-                callback(Either.left<Error, O>(e));
+            callback(Either.left<Error, O>(e));
         };
 
         try {
+
+            // console.log();
+            // console.log("-->", this._id, accumulator);
+
+            let lastResult: Either<Error, O> = null;
 
             if (this._currentProcess) return this._currentProcess.send(this.func, accumulator, this.callerFileName);
 
             Pool.acquire()
                 .then((cp: Pool.IChildProcess) => {
 
+                    // console.log("\tACQUIRE", this._id, cp.pid);
+
+                    this._isComplete = false;
                     this._currentProcess = cp;
 
                     cp.addListener ((r: Either<Error, O>) => {
+
+                        // console.log("<--", this._id, r, cp.isComplete, cp.isDestroyable, cp.pid);
 
                         if (cp.isDestroyable) {
                             this._currentProcess = null;
@@ -340,10 +366,15 @@ class TryFork  <I, O> extends TryLocal<I, O> {
                         } else if (cp.isComplete) {
                             this._currentProcess = null;
                             this._isComplete = true;
+                            lastResult.isRight() ? onNext(lastResult.getRight()) : onFailure(lastResult.getLeft());
                             Pool.release(cp);
-                            r.isRight() ? onNext(r.getRight()) : onFailure(r.getLeft());
-                        } else {
-                            r.isRight() ? onNext(r.getRight()) : onFailure(r.getLeft());
+                        }
+
+                        lastResult = r;
+
+                        if (this.next) {
+                            if (r instanceof Either)
+                                r.isRight() ? onNext(r.getRight()) : onFailure(r.getLeft());
                         }
                     });
 
