@@ -19,6 +19,17 @@ export interface TryFunction<T, U extends TryFunctionReturn<U>> extends Function
 }
 
 /**
+ * The ISubscription interface is returned from Try.subscription();
+ */
+export interface ISubscription {
+
+    /**
+     * Tells the Try functions to stop sending data and, if any, child processes to die.
+     */
+    unsubscribe (): void;
+}
+
+/**
  * The Try module interface.
  */
 export interface Try <T> {
@@ -59,7 +70,7 @@ export interface Try <T> {
     /**
      * Returns a subscription.
      */
-    // subscribe (onNext: (value: T) => void, onError: (err: Error) => void, onComplete: () => void): {unsubscribe: () => void};
+    subscribe (onNext: (value: T) => void, onError: (err: Error) => void, onComplete: () => void): ISubscription;
 
     /**
      * Returns the Try as a curried function, with the option to
@@ -195,9 +206,24 @@ class TryClass<T> implements Try<T> {
         });
     }
 
-    // public subscribe (onNext: (value: T) => void, onError: (err: Error) => void, onComplete: () => void): {unsubscribe: () => void} {
 
-    // }
+    public subscribe (onNext: (value: T) => void, onError: (err: Error) => void, onComplete: () => void): ISubscription {
+
+        if (typeof onNext !== "function") throw new Error("The onNext parameter must be a function.");
+        if (onError && typeof onError !== "function")  throw new Error("The onError parameter must be a function.");
+        if (onComplete && typeof onComplete !== "function")  throw new Error("The onComplete parameter must be a function.");
+
+        this.head.run(this.initialValue, (next: Either<Error, T>) => {
+
+            if (next instanceof Either.Right) onNext(next.getRight());
+            else if (onError && next instanceof Either.Left) onError(next.getLeft());
+
+            if (onComplete && this.head.isComplete(true)) onComplete();
+        });
+
+        return { unsubscribe: () => this.head.complete() }
+    }
+
 
     public toCurried (): (initialValue?: any) => Promise<Either<Error, T>> {
 

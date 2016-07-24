@@ -6,6 +6,9 @@ export interface TryFunction<T, U extends TryFunctionReturn<U>> extends Function
     length: number;
     prototype: any;
 }
+export interface ISubscription {
+    unsubscribe(): void;
+}
 export interface Try<T> {
     andThen<I, O>(func: TryFunction<I, O>): this;
     andThenFork<I, O>(func: TryFunction<I, O>): this;
@@ -13,6 +16,7 @@ export interface Try<T> {
     getOrElse<I>(func: TryFunction<void, T>, value?: I): Promise<Either<Error, T>>;
     getOrElseFork<I>(func: TryFunction<void, T>, value?: I): Promise<Either<Error, T>>;
     getOrThrow(err?: Error): Promise<Either<Error, T>>;
+    subscribe(onNext: (value: T) => void, onError: (err: Error) => void, onComplete: () => void): ISubscription;
     toCurried(): (initialValue?: any) => Promise<Either<Error, T>>;
 }
 export declare namespace Try {

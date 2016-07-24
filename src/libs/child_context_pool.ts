@@ -165,7 +165,7 @@ const pool = new Pool<IChildProcess>({
     name              : `child_context_pool_${Math.random().toString(36).substr(2)}`,
     create            : (callback) => callback(null, new ChildProcess()),
     destroy           : (cp) => cp.destroy(),
-    max               : 1, // +process.env.TRYJS_FORK_POOL_MAX || os.cpus().length * 2,
+    max               : 2, // +process.env.TRYJS_FORK_POOL_MAX || os.cpus().length * 2,
     min               : 1, // +process.env.TRYJS_FORK_POOL_MIN || Math.ceil(os.cpus().length / 2),
     refreshIdle       : true,
     idleTimeoutMillis : +process.env.TRYJS_FORK_POOL_IDLE || 9999,
