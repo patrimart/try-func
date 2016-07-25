@@ -109,6 +109,23 @@ export namespace Either {
     }
 
     /**
+     * Lifts the given partialFunction into a total function that returns an Either result.
+     * Basically, wraps the function in try/catch and return Either.Right() or Either.Left().
+     * @param {(...args: any[]) => T} partialFunction - the function to lift
+     * @returns (...args: any[]) => Either<Error, T>
+     */
+    export function lift <Error, T> (partialFunction: (...args: any[]) => T): (...args: any[]) => Either<Error, T> {
+
+        return (...args: any[]) => {
+            try {
+                return Either.right<Error, T>(partialFunction.apply(partialFunction, args) as T);
+            } catch (err) {
+                return Either.left<Error, T>(err);
+            }
+        };
+    }
+
+    /**
      * The Either.Left<L, R> class.
      */
     export class Left <L, R> extends Either <L, R> {

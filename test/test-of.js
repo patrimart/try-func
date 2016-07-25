@@ -1,8 +1,18 @@
 
 var Either = require('../lib/either').Either;
+var Option = require('../lib/option').Option;
 var Try = require('../lib/try').Try;
 
 var Double = require('./utils/math').Double;
+
+function divide (a, b) {
+    console.log(a, b);
+    return a / b;
+}
+
+// console.log("1 =>", divide(undefined, 3));
+
+console.log("2 =>", Option.lift(divide)(20, 5));
 
 console.log('Start Test', Double(5));
 

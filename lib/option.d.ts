@@ -21,6 +21,7 @@ export declare namespace Option {
     function some<T>(value: T): Some<T>;
     function none<T>(): None<T>;
     function nothing(): None<void>;
+    function lift<T>(partialFunction: (...args: any[]) => T): (...args: any[]) => Option<T>;
     class None<T> extends Option<T> {
         constructor();
         isEmpty(): boolean;

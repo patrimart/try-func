@@ -101,6 +101,23 @@ export namespace Option {
     }
 
     /**
+     * Lifts the given partialFunction into a total function that returns an Option result.
+     * Basically, wraps the function in try/catch and returns Option.Some() or Option.None().
+     * @param {(...args: any[]) => T} partialFunction - the function to lift
+     * @returns (...args: any[]) => Option<T>
+     */
+    export function lift <T> (partialFunction: (...args: any[]) => T): (...args: any[]) => Option<T> {
+
+        return (...args: any[]) => {
+            try {
+                return Option.some<T>(partialFunction.apply(partialFunction, args) as T);
+            } catch (err) {
+                return Option.none<T>();
+            }
+        };
+    }
+
+    /**
      * The Option.None<T> class.
      */
     export class None<T> extends Option<T> {

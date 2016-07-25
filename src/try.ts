@@ -68,7 +68,11 @@ export interface Try <T> {
     getOrThrow (err?: Error): Promise<Either<Error, T>>;
 
     /**
-     * Returns a subscription.
+     * Returns a subscription to receive continuous data.
+     * @param {(value: T) => void} onNext - callback to receive continuous responses
+     * @param {(err: Error) => void} onError - callback to receive errors
+     * @param {onComplete: () => void} onComplete - callback to notify a subscription is done
+     * @returns ISubscription
      */
     subscribe (onNext: (value: T) => void, onError: (err: Error) => void, onComplete: () => void): ISubscription;
 
@@ -109,7 +113,6 @@ const co = require("co");
 import * as Pool from "./libs/child_context_pool";
 import * as path from "path";
 
-
 interface TryRunner <I, O> {
     id: string;
     setPrevious (f: TryRunner<any, I>): void;
@@ -118,7 +121,6 @@ interface TryRunner <I, O> {
     isComplete (prevComplete: boolean): boolean;
     complete (): void;
 }
-
 
 /**
  * The TryClass manages the Try function flow and execution.

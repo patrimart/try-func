@@ -25,6 +25,7 @@ export declare namespace Either {
     function left<L, R>(left: L): Left<L, R>;
     function right<L, R>(right: R): Right<L, R>;
     function nothing(): Left<void, void>;
+    function lift<Error, T>(partialFunction: (...args: any[]) => T): (...args: any[]) => Either<Error, T>;
     class Left<L, R> extends Either<L, R> {
         private left;
         constructor(left: L);
