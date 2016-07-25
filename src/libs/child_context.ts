@@ -15,8 +15,6 @@ import * as log from "./log";
 import * as Queue from "./child_context_queue";
 
 const ___compiledScriptCache___: {[hash: string]: any} = {};
-const ___origRequire___ = require;
-const ___that___ = this;
 
 // Listen for messages w/ functions from parent process.
 // Ignore messages to poll queue.
@@ -71,7 +69,7 @@ function onMessage (message: {func: string, data: any, callerFileName: string}) 
         process.on("unhandledRejection", onFailure);
 
         // Wrap the user's executable function with TryJS handlers.
-        let code = `(function (require, Complete, Next, arg) { return (${message.func})(arg); })`,
+        let code = `(function (exports, require, module, __filename, __dirname, Complete, Next, arg) { return (${message.func})(arg); })`,
             hash = ___hash___(code),
             script: any;
 
@@ -83,16 +81,19 @@ function onMessage (message: {func: string, data: any, callerFileName: string}) 
             ___compiledScriptCache___[hash] = script;
         }
 
+        const ___module = new (require("module"))(Math.random().toString(36).substr(2), {});
+        const ___filename = message.callerFileName;
+        const ___dirname = path.parse(message.callerFileName).dir;
         // Override require() to handle cwd discrepency.
         const wrapRequire = Object.assign(function require (): any {
-            arguments[0] = path.resolve(path.parse(message.callerFileName).dir, arguments[0]);
-            return ___origRequire___.apply(___that___, arguments);
+            if (arguments[0].startsWith(".")) arguments[0] = path.resolve(___dirname, arguments[0]);
+            return ___module.require(arguments[0]);
         }, require);
 
         // If user's function is a generator with yields, wrap in co lib.
         if (message.func.startsWith("function*")) {
 
-            (co(script.runInThisContext()(wrapRequire, onComplete, onNext, message.data)) as Promise<any>)
+            (co(script.runInThisContext()(___module.exports, wrapRequire, ___module, ___filename, ___dirname, onComplete, onNext, message.data)) as Promise<any>)
                 .then((r: any) => { if (r !== undefined) onComplete(r); })
                 .catch((err: Error) => onComplete(Either.left(err)));
 
@@ -100,7 +101,7 @@ function onMessage (message: {func: string, data: any, callerFileName: string}) 
         // Else, run normally.
         else {
 
-            const r = script.runInThisContext()(wrapRequire, onComplete, onNext, message.data);
+            const r = script.runInThisContext()(___module.exports, wrapRequire, ___module, ___filename, ___dirname, onComplete, onNext, message.data);
             if (r !== undefined) onComplete(r);
         }
 

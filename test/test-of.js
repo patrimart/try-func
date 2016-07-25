@@ -48,6 +48,10 @@ for (var i = 0; i < 10; i++) {
     })
     .get().then(result => console.log('RESULT 1 =>', result));
 
+// Bad. Top-level require in module will not work.
+// .andThenFork(require('./functions/generator-promise'))
+// OK
+// .andThenFork(() => require('./functions/generator-promise')())
 
 
     // Non-fork must be annon-funcs, not lambdas, if using this.Complete/Failure.
