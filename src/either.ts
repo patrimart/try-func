@@ -57,9 +57,12 @@ export abstract class Either <L, R> {
      * @returns {boolean}
      */
     public equals (other: Either<L, R>): boolean {
-        if (! other) return false;
+        if (! other || other instanceof Either === false) return false;
         if (this === other) return true;
-        return this.getRight() === this.getRight() && this.getLeft() === this.getLeft();
+        if (this.isRight() !== other.isRight()) return false;
+        if (this.isRight() && this.getRight() === other.getRight()) return true;
+        if (this.getLeft() && this.getLeft() === other.getLeft()) return true;
+        return false;
     }
 
     /**

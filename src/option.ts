@@ -49,9 +49,10 @@ export abstract class Option <T> {
      * @returns {boolean}
      */
     public equals (other: Option<T>): boolean {
-        if (! other) return false;
+        if (! other || other instanceof Option === false) return false;
         if (this === other) return true;
-        return this.isDefined() === this.isDefined() && this.get() === this.get();
+        if (this.isDefined() === false && other.isDefined() === false) return true;
+        return this.isDefined() === other.isDefined() && this.get() === other.get();
     }
 
     /**

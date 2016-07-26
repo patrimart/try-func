@@ -77,8 +77,8 @@ export interface Try <T> {
     subscribe (onNext: (value: T) => void, onError: (err: Error) => void, onComplete: () => void): ISubscription;
 
     /**
-     * Returns the Try as a curried function, with the option to
-     * pass an initial value.
+     * Returns the Try as a curried function, with the option to pass an initial value.
+     * @returns {(initialValue?: any) => Promise<Either<Error, T>>}
      */
     toCurried (): (initialValue?: any) => Promise<Either<Error, T>>;
 }

@@ -5,9 +5,6 @@ var Either = require('../../lib/either').Either;
 var Option = require('../../lib/option').Option;
 var Try = require("../../lib/try").Try;
 
-var content = fs.readFileSync(__dirname + '/functions/init-require-return.js');
-console.log(content);
-
 describe('Array', function () {
 
     describe('#indexOf()', function () {
