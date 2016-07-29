@@ -58,17 +58,17 @@ describe('Either', function () {
 
         it('should toJSON Right', function () {
             var e = Either.right("OK");
-            assert.deepEqual(e, {right: "OK"});
+            assert.deepEqual(e.toJSON(), {right: "OK"});
         });
 
         it('should toJSON Left', function () {
             var e = Either.left("BAD");
-            assert.deepEqual(e, {left: "BAD"});
+            assert.deepEqual(e.toJSON(), {left: "BAD"});
         });
 
         it('should toJSON Nothing', function () {
             var e = Either.nothing();
-            assert.deepEqual(e, {left: undefined});
+            assert.deepEqual(e.toJSON(), {left: undefined});
         });
     });
 
@@ -77,8 +77,8 @@ describe('Either', function () {
         it('should lift function', function () {
             var f = (a, b) => a[b];
             var lf = Either.lift(f);
-            assert(lf({b:"OK"}, "b").get() === "OK", "Does not return OK");
-            assert.doesNotThrow(() => lf(null, "b"), "Does throw");
+            assert(lf({b:"OK"}, "b").get() === "OK", "Return OK");
+            assert.doesNotThrow(() => lf(null, "b"), "Throws");
         });
     });
 

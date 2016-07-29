@@ -3,6 +3,8 @@ import {Either} from "./either";
 import {Option} from "./option";
 import * as log from "./libs/log";
 
+export type TryType = "run-once" | "subscription" | "observable";
+
 /**
  * The return type of the user function.
  */
@@ -117,7 +119,7 @@ interface TryRunner <I, O> {
     id: string;
     setPrevious (f: TryRunner<any, I>): void;
     setNext (f: TryRunner<O, any>): void;
-    run (accumulator: I, callback: (v: Either<Error, O>) => void): void;
+    run (accumulator: I, type: TryType, callback: (v: Either<Error, O>) => void): void;
     isComplete (prevComplete: boolean): boolean;
     complete (): void;
 }
@@ -156,7 +158,7 @@ class TryClass<T> implements Try<T> {
     public get (): Promise<Either<Error, T>> {
 
         return new Promise((resolve, _) => {
-            this.head.run(this.initialValue, (next: Either<Error, T>) => {
+            this.head.run(this.initialValue, "run-once", (next: Either<Error, T>) => {
                 this.head.complete();
                 if (next) resolve(next);
             });
@@ -172,7 +174,7 @@ class TryClass<T> implements Try<T> {
                         resolve(r);
                     } else {
                         const runner = new TryLocal <I, T> (func);
-                        runner.run(value, (next: Either<Error, T>) => resolve(next));
+                        runner.run(value, "run-once", (next: Either<Error, T>) => resolve(next));
                     }
                 });
         });
@@ -187,7 +189,7 @@ class TryClass<T> implements Try<T> {
                         resolve(r);
                     } else {
                         const runner = new TryFork <I, T> (func, this.callerFileName);
-                        runner.run(value, (next: Either<Error, T>) => resolve(next));
+                        runner.run(value, "run-once", (next: Either<Error, T>) => resolve(next));
                     }
                 });
         });
@@ -215,9 +217,11 @@ class TryClass<T> implements Try<T> {
         if (onError && typeof onError !== "function")  throw new Error("The onError parameter must be a function.");
         if (onComplete && typeof onComplete !== "function")  throw new Error("The onComplete parameter must be a function.");
 
-        this.head.run(this.initialValue, (next: Either<Error, T>) => {
+        this.head.run(this.initialValue, "subscription", (next: Either<Error, T>) => {
 
-            if (next instanceof Either.Right) onNext(next.getRight());
+            if (next === Pool.UNDEFINED as any) {
+                this.head.complete();
+            } else if (next instanceof Either.Right) onNext(next.getRight());
             else if (onError && next instanceof Either.Left) onError(next.getLeft());
 
             if (onComplete && this.head.isComplete(true)) onComplete();
@@ -231,7 +235,7 @@ class TryClass<T> implements Try<T> {
 
         return (initialValue?: any) => {
             return new Promise((resolve, _) => {
-                this.head.run(initialValue, (next: Either<Error, T>) => {
+                this.head.run(initialValue, "run-once", (next: Either<Error, T>) => {
                     this.head.complete();
                     resolve(next);
                 });
@@ -274,7 +278,13 @@ class TryLocal <I, O> implements TryRunner<I, O> {
         if (this.next) this.next.complete();
     }
 
-    public run (accumulator: I, callback: (v: Either<Error, O>) => void): void {
+    public run (accumulator: I, type: TryType, callback: (v: Either<Error, O>) => void): void {
+
+        if (accumulator === Pool.UNDEFINED as any) {
+            if (this.next) this.next.run(Pool.UNDEFINED as any, type, callback);
+            else callback(Pool.UNDEFINED as any);
+            return;
+        }
 
         let isWaitingResponse = true;
 
@@ -288,13 +298,13 @@ class TryLocal <I, O> implements TryRunner<I, O> {
             else if (r instanceof Option.Some) resp = r.get();
             else if (r instanceof Option.None) return callback(Either.left<Error, O>(new ReferenceError("This option is None.")));
             else if (r instanceof Promise) {
-                return r.then((v: any) => onComplete(r)).catch((e: Error) => callback(Either.left<Error, O>(e)));
+                return r.then((v: any) => onComplete(v)).catch((e: Error) => callback(Either.left<Error, O>(e)));
             }
 
             isWaitingResponse = false;
 
             if (this.next) {
-                setImmediate(() => this.next.run(resp, callback));
+                setImmediate(() => this.next.run(resp, type, callback));
             } else {
                 setImmediate(() => callback(Either.right<Error, O>(resp)));
             }
@@ -345,35 +355,51 @@ class TryFork  <I, O> extends TryLocal<I, O> {
      */
     public complete (): void {
 
-        if (! this._isComplete) {
-            this._isComplete = true;
-            if (this._currentProcess) {
-                Pool.destroy(this._currentProcess);
-                this._currentProcess = null;
-            }
-            if (this.next) this.next.complete();
+        this._isComplete = true;
+        if (this._currentProcess) {
+            Pool.release(this._currentProcess);
+            this._currentProcess = null;
         }
+        if (this.next) this.next.complete();
     }
 
-    public run (accumulator: I, callback: (v: Either<Error, O>) => void): void {
+    public run (accumulator: I, type: TryType, callback: (v: Either<Error, O>) => void): void {
+
+        // if (accumulator === Pool.UNDEFINED as any) {
+        //     this._currentProcess = null;
+        //     this._isComplete = true;
+        //     if (this.next) this.next.run(Pool.UNDEFINED as any, type, callback);
+        //     else callback(Pool.UNDEFINED as any);
+        //     return;
+        // }
 
         // Send the user function response down the flow, or send final response.
         const onNext = (r: O) => {
+
+            if (this._isComplete) return;
+
+            // if (r === Pool.UNDEFINED as any) {
+            //     if (this.next) this.next.run(Pool.UNDEFINED as any, type, callback);
+            //     else callback(Pool.UNDEFINED as any);
+            //     return;
+            // }
+
             if (this.next)
-                this.next.run(r, callback);
+                this.next.run(r, type, callback);
             else
                 callback(Either.right<Error, O>(r));
         };
 
         // Send the error as the final response, skipping all subsequent user funtions.
         const onFailure = (e: Error) => {
+            if (this._isComplete) return;
             callback(Either.left<Error, O>(e));
         };
 
         try {
 
             // If a child process has aleady been acquired, send the user function to it.
-            if (this._currentProcess) return this._currentProcess.send(this.func, accumulator, this.callerFileName);
+            if (this._currentProcess) return this._currentProcess.send(this.func, accumulator, this.callerFileName, type);
 
             // Acquire a pooled child process, or block until available.
             Pool.acquire()
@@ -384,19 +410,24 @@ class TryFork  <I, O> extends TryLocal<I, O> {
 
                     // Listen for user function responses from the child process.
                     cp.addListener ((r: Either<Error, O>) => {
+                        // setImmediate(() => {
+                            // Send the user function response down the flow.
+                            if (r instanceof Either)
+                                r.isRight() ? onNext(r.getRight()) : onFailure(r.getLeft());
+                            else if (type === "subscription")
+                                onNext(Pool.UNDEFINED as any);
 
-                        if (cp.isDestroyable) {
-                            this._currentProcess = null;
-                        } else if (cp.isComplete) {
-                            this._currentProcess = null;
-                            this._isComplete = true;
-                        }
-                        // Send the user function response down the flow.
-                        if (r instanceof Either) r.isRight() ? onNext(r.getRight()) : onFailure(r.getLeft());
+                            if (cp.isDestroyable) {
+                                this._currentProcess = null;
+                            } else if (cp.isComplete) {
+                                this._currentProcess = null;
+                                this._isComplete = true;
+                            }
+                        // });
                     });
 
                     // Send the user function to the child process for execution.
-                    cp.send(this.func, accumulator, this.callerFileName);
+                    cp.send(this.func, accumulator, this.callerFileName, type);
                 })
                 // If the pool fails, let the user know. This should never happen.
                 .catch(err => {

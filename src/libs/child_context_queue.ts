@@ -8,6 +8,9 @@ import * as log from "./log";
 // Error message, data, isDestroyable, isComplete
 type queueItem = [string, any, boolean, boolean];
 
+// Also on child_context_pool.ts
+const UNDEFINED = "2m!!4?U=8th==Z_utdnzR5hsTrry7TG%DZHHvMUZrTp6hs3CWm34=?EgH6FVx?HA?=q_e3$C-eNddgDcMN_4_y@GLpwpm_t-6JdfyAAuEJM97z@dLQ3_pe2PNA$-cZtC";
+
 let queue: Array<queueItem> = [];
 let readyToSend = true;
 let failSendCount = 0;
@@ -67,22 +70,22 @@ function sendItem (item?: queueItem, callback?: (err: Error) => void) {
 
 // Send nothing with complete.
 export function onComplete (callback?: (err: Error) => void) {
-    setImmediate(() => sendItem([undefined, undefined, false, true], callback));
+    setImmediate(() => sendItem([UNDEFINED, UNDEFINED, false, true], callback));
 }
 
 // Send Either.Right(r).
 export function onNext (r: any, callback?: (err: Error) => void) {
-    setImmediate(() => sendItem([undefined, r, false, false], callback));
+    setImmediate(() => sendItem([UNDEFINED, r, false, false], callback));
 }
 
 // Send Either.Left(e) with complete.
 export function onFailure (e: Error, callback?: (err: Error) => void) {
     log.error(e);
-    setImmediate(() => sendItem([e.message, undefined, false, true], callback));
+    setImmediate(() => sendItem([e.message, UNDEFINED, false, true], callback));
 }
 
 // Send Either.Left(e) with destroy.
 export function onFatalException (e: Error, callback?: (err: Error) => void) {
     log.error(e);
-    setImmediate(() => sendItem([e.message, undefined, true, false], callback));
+    setImmediate(() => sendItem([e.message, UNDEFINED, true, false], callback));
 }

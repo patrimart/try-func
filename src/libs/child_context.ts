@@ -29,12 +29,15 @@ process.on("message", function (message: any) {
  * @param {string} message.func - the user function to execute.
  * @param {any} data - the data to pass to the user function.
  * @param {string} callerFileName - the origin of the user function.
+ * @param {string} type - run-once, subscription, observable
  */
-function onMessage (message: {func: string, data: any, callerFileName: string}) {
-
+function onMessage (message: {func: string, data: any, callerFileName: string, type: string}) {
+    // message.type = "subscription";
     let isComplete = false;
 
     function onFailure (err: Error) {
+        process.removeListener("unhandledRejection", onFailure);
+        isComplete = true;
         Queue.onFailure(err);
     }
 
@@ -43,33 +46,35 @@ function onMessage (message: {func: string, data: any, callerFileName: string}) 
     }
 
     function onNext (r: any, doComplete?: boolean) {
-
+        // console.log("NEXT =>", r, doComplete);
         // Harshly indicate that a user function has invoked callbacks after complete has been indicated.
         if (isComplete) return Queue.onFatalException(new Error("Complete has already been invoked."));
 
+        process.removeListener("unhandledRejection", onFailure);
+
         // Handle many different responses from the user functions.
         if      (r instanceof Either.Right) onNext(r.get(), doComplete);
-        else if (r instanceof Either.Left)  Queue.onFailure(r.getLeft() instanceof Error ? r.getLeft() : new ReferenceError(String(r.getLeft())))
+        else if (r instanceof Either.Left)  onFailure(r.getLeft() instanceof Error ? r.getLeft() : new ReferenceError(String(r.getLeft())))
         else if (r instanceof Option.Some)  onNext(r.get(), doComplete);
-        else if (r instanceof Option.None)  Queue.onFailure(new ReferenceError("This option is None."));
+        else if (r instanceof Option.None)  onFailure(new ReferenceError("This option is None."));
         else if (r instanceof Promise)      r.then((v: any) => onNext(v, doComplete)).catch((e: Error) => onFailure(e))
         else {
-            Queue.onNext(r);
+            if (r !== undefined) Queue.onNext(r);
             // This "onComplete" code here prevents a Promise async issue.
             if (doComplete) {
-                process.removeListener("unhandledRejection", onFailure);
                 isComplete = true;
                 Queue.onComplete();
             }
         }
     };
 
+    // Send unhandled Promise catch.
+    process.on("unhandledRejection", onFailure);
+
     try {
-        // Send unhandled Promise catch.
-        process.on("unhandledRejection", onFailure);
 
         // Wrap the user's executable function with TryJS handlers.
-        let code = `(function (exports, require, module, __filename, __dirname, Complete, Next, arg) { return (${message.func})(arg); })`,
+        let code = `(function (exports, require, module, __filename, __dirname, Complete, Next, Either, Option, arg) { return (${message.func})(arg); })`,
             hash = ___hash___(code),
             script: any;
 
@@ -93,22 +98,22 @@ function onMessage (message: {func: string, data: any, callerFileName: string}) 
         // If user's function is a generator with yields, wrap in co lib.
         if (message.func.startsWith("function*")) {
 
-            (co(script.runInThisContext()(___module.exports, wrapRequire, ___module, ___filename, ___dirname, onComplete, onNext, message.data)) as Promise<any>)
-                .then((r: any) => { if (r !== undefined) onComplete(r); })
-                .catch((err: Error) => onComplete(Either.left(err)));
+            (co(script.runInThisContext()(___module.exports, wrapRequire, ___module, ___filename, ___dirname, onComplete, onNext, Either, Option, message.data)) as Promise<any>)
+                .then((r: any) => { if (r !== undefined) (message.type ===  "run-once" ? onComplete : onNext)(r); })
+                .catch((err: Error) => onFailure(err));
 
         }
         // Else, run normally.
         else {
 
-            const r = script.runInThisContext()(___module.exports, wrapRequire, ___module, ___filename, ___dirname, onComplete, onNext, message.data);
-            if (r !== undefined) onComplete(r);
+            const r = script.runInThisContext()(___module.exports, wrapRequire, ___module, ___filename, ___dirname, onComplete, onNext, Either, Option, message.data);
+            if (r !== undefined) (message.type ===  "run-once" ? onComplete : onNext)(r);
         }
 
     }
     // Catch any unexpected errors.
     catch (err) {
-        Queue.onFailure(err);
+        onFailure(err);
     }
 }
 

@@ -1,5 +1,6 @@
 import { Either } from "./either";
 import { Option } from "./option";
+export declare type TryType = "run-once" | "subscription" | "observable";
 export declare type TryFunctionReturn<T> = Promise<T> | Either<Error, T> | Option<T> | T;
 export interface TryFunction<T, U extends TryFunctionReturn<U>> extends Function {
     name?: string;

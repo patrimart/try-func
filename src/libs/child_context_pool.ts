@@ -8,9 +8,12 @@ import * as os from "os";
 // A 3rd party dependency. Importing this spawns min child processes.
 import {Pool} from "generic-pool";
 
-import {TryFunction} from "../try";
+import {TryFunction, TryType} from "../try";
 import {Either} from "../either";
 import * as log from "./log";
+
+// Also on child_context_queue.ts
+export const UNDEFINED = "2m!!4?U=8th==Z_utdnzR5hsTrry7TG%DZHHvMUZrTp6hs3CWm34=?EgH6FVx?HA?=q_e3$C-eNddgDcMN_4_y@GLpwpm_t-6JdfyAAuEJM97z@dLQ3_pe2PNA$-cZtC";
 
 /**
  * The interface for the IChildProcess.
@@ -20,7 +23,7 @@ export interface IChildProcess {
     isDestroyable: boolean;
     isComplete: boolean;
     addListener <T> (f: (r: Either<Error, T>) => void): void;
-    send <T, U> (func: TryFunction<T, U>, data: any, callerFileName: string): void;
+    send <T, U> (func: TryFunction<T, U>, data: any, callerFileName: string, type: TryType): void;
     release (): void;
     destroy (): void;
     reset (): void;
@@ -45,36 +48,47 @@ class ChildProcess implements IChildProcess {
 
         // Error, data, isDestroyable, isComplete
         this._child.on("message", (m: [string, any, boolean, boolean]) => {
+// console.log("EMIT1 =>", m);
 
             // If the emitter is gone, release or destroy has been invoked.
             // Do not attempt to send additional repsonses. Indicates a problem.
             if (this._emitter) {
 
-                this._isDestroyable = m[2];
-                this._isComplete = m[3];
+                // this._isDestroyable = m[2];
+                // this._isComplete = m[3];
+
+                // If error or data, send the response and prompt for the next.
+                if (m[0] !== UNDEFINED) {
+                    this._emitter(Either.left<Error, any>(new Error(m[0])));
+                }
+                // TODO Would like to ignore if undefined.
+                else if (m[1] !== UNDEFINED) {
+                    this._emitter(Either.right<Error, any>(m[1]));
+                }
+                else {
+                    // console.log("===========>", m);
+                    // let e = this._emitter;
+                    // e(UNDEFINED as any);
+                }
+// console.log("EMIT2 =>", m);
 
                 // If complete or destroyable, release or destroy the process and inform the Try.
-                if (this._isComplete) {
+                if (m[3]) {
                     release(this);
-                } else if (this._isDestroyable) {
+                } else if (m[2]) {
                     destroy(this);
-                }
-                // Else, send the response and prompt for the next.
-                else {
+                } else {
                     this._child.send("REQUEST_NEXT_ITEM");
-                    if (m[0]) {
-                        this._emitter(Either.left<Error, any>(new Error(m[0])));
-                    } else {
-                        this._emitter(Either.right<Error, any>(m[1]));
-                    }
                 }
             }
             // Log error for attempting to send responses after complete or destroy.
             else {
-                log.info(`The following message was received from a child process that has been released back to` +
-                    `the pool (${this._isComplete}) or scheduled for destruction (${this._isDestroyable}). ` +
-                    `This generally indicates a misbehaving user function.`);
-                log.info(m[0] ? m[0] : `Error: ${JSON.stringify(m[1])}`);
+                console.log("emitter nulled:", m[1]);
+                if (m[1] === UNDEFINED as any) return log.info("UNDEFINED emitted after emitter nulled in child_context_pool:84.")
+                // log.info(`The following message was received from a child process that has been released back to ` +
+                //     `the pool (${this._isComplete}) or scheduled for destruction (${this._isDestroyable}). ` +
+                //     `This generally indicates a misbehaving user function.`);
+                // log.info(JSON.stringify(m));
             }
         });
 
@@ -116,8 +130,8 @@ class ChildProcess implements IChildProcess {
      * @param {any} data - the data to pass to the user function
      * @param {string} callerFileName - the origin of the user function
      */
-    public send <T, U> (func: TryFunction<T, U>, data: any, callerFileName: string): void {
-        if (this._child) this._child.send({func: func.toString(), data: data, callerFileName});
+    public send <T, U> (func: TryFunction<T, U>, data: any, callerFileName: string, type: TryType): void {
+        if (this._child) this._child.send({func: func.toString(), data, callerFileName, type});
     }
 
     /**
@@ -132,8 +146,9 @@ class ChildProcess implements IChildProcess {
      * Marks this child process as complete.
      */
     public release (): void {
+        if (this._emitter && ! this._isComplete) this._emitter(UNDEFINED as any);
         this._isComplete = true;
-        if (this._emitter) this._emitter(null);
+        // console.log("RELEASE");
         this._emitter = null;
     }
 
@@ -143,6 +158,7 @@ class ChildProcess implements IChildProcess {
     public destroy (): void {
         this._isDestroyable = true;
         this.release();
+        // console.log("DESTROY");
         if (this._child) {
             this._child.removeAllListeners();
             this._child.kill();

@@ -19,12 +19,17 @@ describe('Fork Subscription', function () {
             var r = yield Promise.resolve(v * v);
             return r;
         })
-        .andThen(v => v * v)
+        .andThen(v => v + v)
         .subscribe(
-            next => { if (next > 100) sub.unsubscribe(); },
+            next => { 
+                // console.log("NEXT =>", next);
+                if (next > 240) sub.unsubscribe();
+            },
             err => console.log("Error", err),
-            () => done()
-        );
+            () => {
+                // console.log("COMPLETE");
+                done();
+            });
 
     });
 
@@ -34,22 +39,29 @@ describe('Fork Subscription', function () {
 
             var counter = 0;
 
-            setInterval(() => {
-                if (++counter > 10)
+            const id = setInterval(() => {
+                if (++counter > 10) {
+                    clearInterval(id);
                     Complete();
-                else
+                } else {
                     Next(counter);
+                }
             }, 100);
 
         }).andThen(function* (v) {
-
             var r = yield Promise.resolve(v * v);
             return r;
-
         })
         .subscribe(
-            next => { if (next > 110) done("Counter exceeded 10."); }
-        );
+            next => { 
+                // console.log("NEXT =>", next);
+                if (next > 120) done("Counter exceeded 10.");
+            },
+            err => done("Returned an error."),
+            () => {
+                // console.log("COMPLETE");
+                done();
+            });
 
     });
 
@@ -61,7 +73,7 @@ describe('Fork Subscription', function () {
 
             setInterval(() => {
                 if (++counter > 10)
-                    Error(new Error("Counter exceeded 10."));
+                    throw new Error("Counter exceeded 10 so throw.");
                 else
                     Next(counter);
             }, 100);
@@ -69,11 +81,17 @@ describe('Fork Subscription', function () {
         }).andThen(v => v * v)
         .subscribe(
             next => {
+                 // console.log("NEXT =>", next);
                 if (next > 110) done("Counter exceeded 10.")
             },
-            err => done(),
-            () => done("Triggered complete handler.")
-        );
+            err => {
+                // console.log("ERROR =>", err);
+                done();
+            },
+            () => {
+                console.log("COMPLETE");
+                // Error still allows COMPLETE
+            });
 
     });
 

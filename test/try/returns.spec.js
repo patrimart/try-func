@@ -23,7 +23,6 @@ describe('Handling variety of returns', function () {
                 if (next.getRight() === "ABCDEF") done();
                 else done("Final value === " + next);
             });
-
         });
 
         it('should execute functions until final value === Either.Right("ABCDEF").', function (done) {
@@ -50,39 +49,44 @@ describe('Handling variety of returns', function () {
 
         it('should execute lambdas until final value === Either.Right("ABCDEF").', function (done) {
 
-            var outter = "C";
-
             Try.ofFork(() => "A")
-            .andThenFork(v => v + "B")
-            .andThenFork(v => v + outter)
-            .andThenFork(v => Either.right(v + "D"))
-            .andThenFork(v => Option.some(v + "E"))
+            .andThenFork(v => v + "BC")
+            .andThenFork(v => {
+                return Either.right(v + "D");
+            })
+            .andThenFork(v => {
+                return Option.some(v + "E");
+            })
             .andThenFork(v => Promise.resolve(v + "F"))
             .get()
             .then(next => {
                 if (next.getRight() === "ABCDEF") done();
                 else done("Final value === " + next);
             });
-
         });
 
         it('should execute functions until final value === Either.Right("ABCDEF").', function (done) {
 
             Try.ofFork(function () { return "A"; })
-            .andThenFork(function (v) { return v + "B"; })
+            .andThenFork(function (v) {
+                return v + "B";
+            })
             .andThenFork(function* (v) {
                 var r = yield Promise.resolve(v + "C");
                 return r;
             })
-            .andThenFork(function (v) { return Either.right(v + "D"); })
-            .andThenFork(function (v) { return Option.some(v + "E"); })
+            .andThenFork(function (v) {
+                return Either.right(v + "D");
+            })
+            .andThenFork(function (v) {
+                return Option.some(v + "E");
+            })
             .andThenFork(function (v) { return Promise.resolve(v + "F"); })
             .get()
             .then(next => {
                 if (next.getRight() === "ABCDEF") done();
                 else done("Final value === " + next);
             });
-
         });
     });
 });

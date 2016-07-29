@@ -47,6 +47,7 @@ describe('Handle variety of errors', function () {
         it('should execute functions until Promise.reject(Error).', function (done) {
 
             Try.of(function () { return "A"; })
+            // Non-fork must return promise.
             .andThen(function (v) { return Promise.reject(new Error("A planned error occurred.")) })
             .andThen(v => v + "B")
             .get()
@@ -79,7 +80,6 @@ describe('Handle variety of errors', function () {
             Try.ofFork(() => "A")
             .andThenFork(v => v + "B")
             .andThenFork(v => {
-                var Either = require('../../lib/either').Either;
                 return Either.left(new Error("A planned error occurred."));
             })
             .get()
@@ -87,6 +87,7 @@ describe('Handle variety of errors', function () {
                 if (next.getLeft() instanceof Error) done();
                 else done("Final value === " + next);
             });
+
 
         });
 
@@ -99,7 +100,6 @@ describe('Handle variety of errors', function () {
                 return r;
             })
             .andThenFork(function (v) {
-                var Option = require('../../lib/option').Option;
                 return Option.none();
             })
             .andThenFork(function (v) { return Promise.resolve(v + "F"); })
@@ -114,7 +114,7 @@ describe('Handle variety of errors', function () {
         it('should execute functions until Promise.reject(Error).', function (done) {
 
             Try.ofFork(function () { return "A"; })
-            .andThenFork(function (v) { return Promise.reject(new Error("A planned error occurred.")) })
+            .andThenFork(function (v) { Promise.reject(new Error("A planned error occurred.")) })
             .andThenFork(v => v + "B")
             .get()
             .then(next => {
