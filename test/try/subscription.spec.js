@@ -89,7 +89,7 @@ describe('Fork Subscription', function () {
                 done();
             },
             () => {
-                console.log("COMPLETE");
+                // console.log("COMPLETE");
                 // Error still allows COMPLETE
             });
 

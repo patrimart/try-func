@@ -1,6 +1,6 @@
 {
   "name": "try-js",
-  "version": "0.5.0-beta.1",
+  "version": "1.0.0-beta.1",
   "description": "Improved JavaScript error handling, asyncronous flow and parallel processing.",
   "main": "lib",
   "typings": "lib",
@@ -8,10 +8,11 @@
     "test": "test"
   },
   "scripts": {
-    "test": "mocha test/test.js"
+    "test": "mocha test/**/*.spec.js"
   },
   "keywords": [
     "async",
+    "asynchronous",
     "catch",
     "child_process",
     "coro",

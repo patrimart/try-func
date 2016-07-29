@@ -80,12 +80,12 @@ export function onNext (r: any, callback?: (err: Error) => void) {
 
 // Send Either.Left(e) with complete.
 export function onFailure (e: Error, callback?: (err: Error) => void) {
-    log.error(e);
+    // log.error(e);
     setImmediate(() => sendItem([e.message, UNDEFINED, false, true], callback));
 }
 
 // Send Either.Left(e) with destroy.
 export function onFatalException (e: Error, callback?: (err: Error) => void) {
-    log.error(e);
+    // log.error(e);
     setImmediate(() => sendItem([e.message, UNDEFINED, true, false], callback));
 }

@@ -83,12 +83,12 @@ class ChildProcess implements IChildProcess {
             }
             // Log error for attempting to send responses after complete or destroy.
             else {
-                console.log("emitter nulled:", m[1]);
-                if (m[1] === UNDEFINED as any) return log.info("UNDEFINED emitted after emitter nulled in child_context_pool:84.")
-                // log.info(`The following message was received from a child process that has been released back to ` +
-                //     `the pool (${this._isComplete}) or scheduled for destruction (${this._isDestroyable}). ` +
-                //     `This generally indicates a misbehaving user function.`);
-                // log.info(JSON.stringify(m));
+                // console.log("emitter nulled:", m[1]);
+                if (m[1] === UNDEFINED as any) return; // log.info("UNDEFINED emitted after emitter nulled in child_context_pool:84.")
+                log.info(`The following message was received from a child process that has been released back to ` +
+                    `the pool (${this._isComplete}) or scheduled for destruction (${this._isDestroyable}). ` +
+                    `This generally indicates a misbehaving user function.`);
+                log.info(JSON.stringify(m));
             }
         });
 
