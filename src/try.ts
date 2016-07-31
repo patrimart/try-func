@@ -253,6 +253,7 @@ class TryLocal <I, O> implements TryRunner<I, O> {
     protected _id = Math.random().toString(36).substr(2);
     protected prev: TryRunner<any, I>;
     protected next: TryRunner<O, any>
+    protected _activeMessageCount = 0;
 
     constructor (
         protected func: TryFunction<I, O>
@@ -281,14 +282,25 @@ class TryLocal <I, O> implements TryRunner<I, O> {
     public run (accumulator: I, type: TryType, callback: (v: Either<Error, O>) => void): void {
 
         if (accumulator === Pool.UNDEFINED as any) {
-            if (this.next) this.next.run(Pool.UNDEFINED as any, type, callback);
-            else callback(Pool.UNDEFINED as any);
+            let id = setTimeout(() => {
+                if (this._activeMessageCount <= 0) {
+                    clearTimeout(id);
+                    if (this.next) this.next.run(Pool.UNDEFINED as any, type, callback);
+                    else callback(Pool.UNDEFINED as any);
+                }
+            }, 10);
             return;
         }
+
+        this._activeMessageCount++;
+        // console.log(this._activeMessageCount);
 
         let isWaitingResponse = true;
 
         const onComplete = (r: any) => {
+
+            this._activeMessageCount = Math.max(0, this._activeMessageCount - 1);
+            // console.log(this._activeMessageCount);
 
             if (! isWaitingResponse) return log.error(new Error("Complete has already been invoked."));
 
@@ -365,17 +377,27 @@ class TryFork  <I, O> extends TryLocal<I, O> {
 
     public run (accumulator: I, type: TryType, callback: (v: Either<Error, O>) => void): void {
 
-        // if (accumulator === Pool.UNDEFINED as any) {
-        //     this._currentProcess = null;
-        //     this._isComplete = true;
-        //     if (this.next) this.next.run(Pool.UNDEFINED as any, type, callback);
-        //     else callback(Pool.UNDEFINED as any);
-        //     return;
-        // }
+        if (accumulator === Pool.UNDEFINED as any) {
+            let id = setTimeout(() => {
+                if (this._activeMessageCount <= 0) {
+                    clearTimeout(id);
+                    this._currentProcess = null;
+                    this._isComplete = true;
+                    if (this.next) this.next.run(Pool.UNDEFINED as any, type, callback);
+                    else callback(Pool.UNDEFINED as any);
+                }
+            }, 10);
+            return;
+        }
+
+        this._activeMessageCount++;
+        // console.log(this._activeMessageCount);
 
         // Send the user function response down the flow, or send final response.
         const onNext = (r: O) => {
 
+            this._activeMessageCount = Math.max(0, this._activeMessageCount - 1);
+            // console.log(this._activeMessageCount);
             if (this._isComplete) return;
 
             // if (r === Pool.UNDEFINED as any) {
@@ -392,6 +414,8 @@ class TryFork  <I, O> extends TryLocal<I, O> {
 
         // Send the error as the final response, skipping all subsequent user funtions.
         const onFailure = (e: Error) => {
+            this._activeMessageCount = Math.max(0, this._activeMessageCount - 1);
+            // console.log(this._activeMessageCount);
             if (this._isComplete) return;
             callback(Either.left<Error, O>(e));
         };

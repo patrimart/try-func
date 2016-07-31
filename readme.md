@@ -91,10 +91,8 @@ Try.ofFork(function* () {
 
 Either and Option
 -----------------
-This library includes implementations of `Either` and `Option` classes. The `Either` class is used heavily.
-
-__Either__ docs are [here](docs/either.md)
-
+This library includes implementations of `Either` and `Option` classes. The `Either` class is widely used.  
+__Either__ docs are [here](docs/either.md)  
 __Option__  docs are [here](docs/option.md)
 
 ---
@@ -364,12 +362,10 @@ Common Pitfalls
 ---------------
 Here are some issues to be aware of when using this library.
 
-__Pool Starvation__
-
+__Pool Starvation__  
 Forked child processes are managed by a limited pool (with the max being configurable). Forked functions will not be released back into the pool unless they return a non-undefined value or invoke `Complete()`. If your long-running forked functions equal the pool's max, the app will not be able to execute any down-stream functions and it will deadlock.
 
-__Requires in Forks__
-
+__Requires in Forks__  
 Because forked functions must be serialized and sent to a child process, some trickery was done to make relative paths in `require()` still work. Without trying to describe the how-tos (where the function is invoked), these examples should cover it.
 
 If a require cannot resolve a path and you are doing something like this:
@@ -387,16 +383,13 @@ Try
     ...
 ```
 
-__Forked Functions Forking Functions Forking Functions__
-
+__Forked Functions Forking Functions Forking Functions__  
 If a long-running forked function emits five values to another long-running forked function that emits five values, the app could be using up to twenty-five child processes downstream. To be safe, try to restrict your Try chain to one long-running process that feeds completing functions. Or, be aware of child process pool starvation.
 
-__Nested Forking__
-
+__Nested Forking__  
 Using nested Trys with forked functions can cause multiple child process pools to start in the forked child processes. While not forbidden, be aware of exponential growth of child processes.
 
-__Optimization vs. Convenience__
-
+__Optimization vs. Convenience__  
 Spawning child processes is not cheap. Forked functions must be serialized, sent to the child and compiled. Forked functions must serialize data when communicating between parent and child processes. While significant effort was made to alleviate some of this cost with process pools and cached functions, developers can do things to aggravate the issue. Specifically, any behavior that causes a child process to die. Like, calling `unsubscribe()`, uncaught exceptions and unhandled rejections.
 
 If your app does not need to wring out every last drop of performance, I'd suggest leaning on the side of convenience versus optimization. After all, hard-to-reason code will never get easier to understand, but computers will always get faster.

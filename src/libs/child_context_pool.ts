@@ -44,7 +44,7 @@ class ChildProcess implements IChildProcess {
     public constructor () {
 
         // Fork a new child process with necessary env vars.
-        this._child = child_process.fork(`${__dirname}/child_context`, ["special"], { env: { TRYJS_DEBUG: process.env.TRYJS_DEBUG}});
+        this._child = child_process.fork(`${__dirname}/child_context`, [], { env: Object.create(process.env)});
 
         // Error, data, isDestroyable, isComplete
         this._child.on("message", (m: [string, any, boolean, boolean]) => {
