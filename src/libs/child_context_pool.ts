@@ -48,7 +48,7 @@ class ChildProcess implements IChildProcess {
 
         // Error, data, isDestroyable, isComplete
         this._child.on("message", (m: [string, any, boolean, boolean]) => {
-
+            // console.log("Pool Receive =>", m);
             // If the emitter is gone, release or destroy has been invoked.
             // Do not attempt to send additional repsonses. Indicates a problem.
             if (this._emitter) {
@@ -63,9 +63,24 @@ class ChildProcess implements IChildProcess {
 
                 // If complete or destroyable, release or destroy the process and inform the Try.
                 if (m[3]) {
-                    release(this);
+                    // release(this);
+                    if (this._emitter) this._emitter(UNDEFINED as any);
+                    this._isComplete = true;
+                    this._emitter = null;
+                    Singleton().release(this);
                 } else if (m[2]) {
-                    destroy(this);
+                    // destroy(this);
+                    if (this._emitter) this._emitter(UNDEFINED as any);
+                    this._isDestroyable = true;
+                    this._isComplete = true;
+                    this._emitter = null;
+                    if (this._child) {
+                        let cp = this._child;
+                        this._child = null;
+                        Singleton().destroy(this);
+                        cp.removeAllListeners();
+                        cp.kill();
+                    }
                 } else {
                     this._child.send("REQUEST_NEXT_ITEM");
                 }
@@ -136,22 +151,24 @@ class ChildProcess implements IChildProcess {
      * Marks this child process as complete.
      */
     public release (): void {
-        if (this._emitter && ! this._isComplete) this._emitter(UNDEFINED as any);
-        this._isComplete = true;
-        this._emitter = null;
+        if (this._child) this._child.send("FLUSH_QUEUE_COMPLETE");
+        // if (this._emitter && ! this._isComplete) this._emitter(UNDEFINED as any);
+        // this._isComplete = true;
+        // this._emitter = null;
     }
 
     /**
      * Marks this process as destroyable and kills the process.
      */
     public destroy (): void {
-        this._isDestroyable = true;
-        this.release();
-        if (this._child) {
-            this._child.removeAllListeners();
-            this._child.kill();
-            this._child = null;
-        }
+        if (this._child) this._child.send("FLUSH_QUEUE_DESTROY");
+        // this._isDestroyable = true;
+        // this.release();
+        // if (this._child) {
+        //     this._child.removeAllListeners();
+        //     this._child.kill();
+        //     this._child = null;
+        // }
     }
 
     /**
@@ -202,7 +219,7 @@ export function acquire (): Promise<any> {
  */
 export function release (cp: IChildProcess) {
     cp.release();
-    Singleton().release(cp);
+    // Singleton().release(cp);
 }
 
 /**
@@ -210,7 +227,8 @@ export function release (cp: IChildProcess) {
  * @param {} cp - the child process to release
  */
 export function destroy (cp: IChildProcess) {
-    Singleton().destroy(cp);
+    cp.destroy();
+    // Singleton().destroy(cp);
 }
 
 /**

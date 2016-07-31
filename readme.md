@@ -2,6 +2,8 @@ try-func
 ========
 A functional-style Node.js library with improved error handling, flattened asyncronous handling and parallel processing.
 
+**This library is under development and very unstable. Do not use.**
+
 - Supports Node >= 4.3
 - Languages JavaScript and TypeScript
 - Does not support the browser

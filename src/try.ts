@@ -380,7 +380,7 @@ class TryFork  <I, O> extends TryLocal<I, O> {
         this._isShuttingDown = true;
         this._isComplete = true;
         if (this._currentProcess) {
-            // Pool.release(this._currentProcess);
+            Pool.release(this._currentProcess);
             // if (this._activeMessageCount <= 0)
             // Pool.release(cp);
             // else

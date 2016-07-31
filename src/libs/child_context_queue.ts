@@ -23,6 +23,12 @@ process.on("message", function (message: string) {
         sendItem();
     } else if (message === "FLUSH_QUEUE") {
         flush();
+    } else if (message === "FLUSH_QUEUE_COMPLETE") {
+        flush(true);
+    } else if (message === "FLUSH_QUEUE_DESTROY") {
+        flush(false, true);
+    } else if (message === "FLUSH_QUEUE_COMPLETE_DESTROY") {
+        flush(true, true);
     } else {
         // Received a new function, so renew queue.
         clear();
@@ -48,6 +54,7 @@ function sendItem (item?: queueItem, callback?: (err: Error) => void) {
     readyToSend = false;
 
     const next = queue.shift();
+    // console.log("Queue Send =>", next);
     process.send(next, function (err: Error) {
         if (err) {
 
@@ -99,11 +106,17 @@ export function clear () {
 }
 
 // Flush the queue items.
-export function flush (endWithOnComlete?: boolean) {
+export function flush (endWithOnComplete = false, endWithDestroy = false) {
     const tempQueue = queue.slice(0);
     queue = [];
     while (tempQueue.length) {
+        console.log("Flush =>", tempQueue[0]);
         process.send(tempQueue.shift());
     }
-    if (endWithOnComlete) process.send([UNDEFINED, UNDEFINED, false, true]);
+    if (endWithDestroy && endWithOnComplete)
+        process.send([UNDEFINED, UNDEFINED, true, true]);
+    else if (endWithOnComplete)
+        process.send([UNDEFINED, UNDEFINED, false, true]);
+    else if (endWithDestroy)
+        process.send([UNDEFINED, UNDEFINED, true, false]);
 }
