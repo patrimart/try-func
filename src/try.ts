@@ -91,7 +91,7 @@ export interface Try <T> {
 export namespace Try {
 
     /**
-     * Runs the given function.
+     * Executes the given function in the current process.
      */
     export function of <T> (func: TryFunction<void, any>, initialValue?: any): Try<T> {
         const runner = new TryLocal(func);
@@ -99,7 +99,7 @@ export namespace Try {
     }
 
     /**
-     * Runs the given function in a forked child process.
+     * Executes the given function in a forked child process.
      */
     export function ofFork <T> (func: TryFunction<void, any>, initialValue?: any): Try<T> {
         const runner = new TryFork(func, _getCallerFile());

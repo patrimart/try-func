@@ -1,8 +1,8 @@
 
 
-var Either = require('../../lib/either').Either;
-var Option = require('../../lib/option').Option;
-var Try = require('../../lib/try').Try;
+var Either = require('../../lib').Either;
+var Option = require('../../lib').Option;
+var Try = require('../../lib').Try;
 
 describe('Handling variety of returns', function () {
 

@@ -44,7 +44,7 @@ class ChildProcess implements IChildProcess {
     public constructor () {
 
         // Fork a new child process with necessary env vars.
-        this._child = child_process.fork(`${__dirname}/child_context`, ["special"], { env: { __TRYJS_IN_FORK: true, TRYJS_DEBUG: process.env.TRYJS_DEBUG}});
+        this._child = child_process.fork(`${__dirname}/child_context`, ["special"], { env: { TRYJS_DEBUG: process.env.TRYJS_DEBUG}});
 
         // Error, data, isDestroyable, isComplete
         this._child.on("message", (m: [string, any, boolean, boolean]) => {
@@ -176,19 +176,23 @@ class ChildProcess implements IChildProcess {
     }
 }
 
-// Initiates the child process pool.
-const pool = new Pool<IChildProcess>({
-    name              : `child_context_pool_${Math.random().toString(36).substr(2)}`,
-    create            : (callback) => callback(null, new ChildProcess()),
-    destroy           : (cp) => cp.destroy(),
-    max               : 2, // +process.env.TRYJS_FORK_POOL_MAX || os.cpus().length * 2,
-    min               : 1, // +process.env.TRYJS_FORK_POOL_MIN || Math.ceil(os.cpus().length / 2),
-    refreshIdle       : true,
-    idleTimeoutMillis : +process.env.TRYJS_FORK_POOL_IDLE || 9999,
-    reapIntervalMillis: +process.env.TRYJS_FORK_POOL_REAP || 3333,
-    returnToHead      : true,
-    log               : false,
-});
+// Lazily instantiate the child process pool.
+let _pool: Pool<IChildProcess>;
+function Singleton (): Pool<IChildProcess> {
+    if (! _pool) log.info(`Initializing child process pool on pid ${process.pid}.`);
+    return _pool = _pool || new Pool<IChildProcess>({
+        name              : `child_context_pool_${Math.random().toString(36).substr(2)}`,
+        create            : (callback) => callback(null, new ChildProcess()),
+        destroy           : (cp) => cp.destroy(),
+        max               : 2, // +process.env.NODE_TRY_FORK_POOL_MAX || os.cpus().length * 2,
+        min               : 1, // +process.env.NODE_TRY_FORK_POOL_MIN || 2,
+        refreshIdle       : true,
+        idleTimeoutMillis : +process.env.NODE_TRY_FORK_POOL_IDLE || 9000,
+        reapIntervalMillis: +process.env.NODE_TRY_FORK_POOL_REAP || 5000,
+        returnToHead      : true,
+        log               : !! (process.env.NODE_DEBUG || "").split(",").find((m: string) => m.trim() === "try-func-pool"),
+    });
+}
 
 /**
  * Acquire a new child process, or blocks.
@@ -196,7 +200,7 @@ const pool = new Pool<IChildProcess>({
 export function acquire (): Promise<any> {
 
     return new Promise ((resolve, reject) => {
-        pool.acquire((err, cp) => {
+        Singleton().acquire((err, cp) => {
             if (err) return reject(err)
             cp.reset();
             resolve(cp);
@@ -210,7 +214,7 @@ export function acquire (): Promise<any> {
  */
 export function release (cp: IChildProcess) {
     cp.release();
-    pool.release(cp);
+    Singleton().release(cp);
 }
 
 /**
@@ -218,15 +222,15 @@ export function release (cp: IChildProcess) {
  * @param {} cp - the child process to release
  */
 export function destroy (cp: IChildProcess) {
-    pool.destroy(cp);
+    Singleton().destroy(cp);
 }
 
 /**
  * Gracefully shutdown the child_process pool.
  */
 function gracefulShutdown () {
-    log.info(`Shutting down the child_context_pool ${pool.getName()} (size: ${pool.getPoolSize()}, available: ${pool.availableObjectsCount()})`);
-    pool.drain(() => pool.destroyAllNow());
+    log.info(`Shutting down the child_context_pool ${Singleton().getName()} (size: ${Singleton().getPoolSize()}, available: ${Singleton().availableObjectsCount()})`);
+    Singleton().drain(() => Singleton().destroyAllNow());
     process.exit();
 }
 
