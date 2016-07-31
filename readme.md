@@ -107,6 +107,7 @@ The behavior of this library can be changed by setting environment variables.
 - `NODE_TRY_FORK_POOL_IDLE` (9000) - How many ms a child process must be idle to be eligble for reaping.
 - `NODE_TRY_FORK_POOL_REAP` (5000) - How often in ms the pool reaps eligble child processes.
 - `NODE_DEBUG` - Add `try-func` to the list to enable info and error logs to the console. Add `try-func-pool` to log very verbose info about the child process pool(s).
+
 ---
 
 Try Interface Docs
@@ -335,6 +336,7 @@ There are a variety of ways to return a _value_ or `Error` from a Try function.
 - Invoke `Next()` with any of the above. Remember to finally call `Complete()`.
 - Throw or return an `Error`.
 - Reject a `Promise` and do not "catch" it.
+
 ---
 
 Differences Between Forked and Non-Forked Functions
@@ -355,6 +357,7 @@ An effort was made to make their behaviors interchangable. However, some differe
 - Are closures and can see external variables.
 - Cannot catch uncaught exceptions or unhandled rejections.
 - Require a `this` context when using `this.Next()` and `this.Complete()`. If using these, the functions cannot be lambdas.
+
 ---
 
 Common Pitfalls
