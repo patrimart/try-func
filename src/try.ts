@@ -254,6 +254,7 @@ class TryLocal <I, O> implements TryRunner<I, O> {
     protected prev: TryRunner<any, I>;
     protected next: TryRunner<O, any>
     protected _activeMessageCount = 0;
+    protected _isShuttingDown = false;
 
     constructor (
         protected func: TryFunction<I, O>
@@ -281,7 +282,10 @@ class TryLocal <I, O> implements TryRunner<I, O> {
 
     public run (accumulator: I, type: TryType, callback: (v: Either<Error, O>) => void): void {
 
+        if (this._isShuttingDown) return;
+
         if (accumulator === Pool.UNDEFINED as any) {
+            this._isShuttingDown = true;
             let id = setTimeout(() => {
                 if (this._activeMessageCount <= 0) {
                     clearTimeout(id);
@@ -367,44 +371,78 @@ class TryFork  <I, O> extends TryLocal<I, O> {
      */
     public complete (): void {
 
+// console.log("ID", this.id);
+// console.log("isComplete", this._isComplete);
+// console.log("currentProcess", !! this._currentProcess);
+// console.log("activeMessageCount", this._activeMessageCount);
+// console.log("isShuttingDown", this._isShuttingDown);
+
+        this._isShuttingDown = true;
         this._isComplete = true;
         if (this._currentProcess) {
-            Pool.release(this._currentProcess);
-            this._currentProcess = null;
+            // Pool.release(this._currentProcess);
+            // if (this._activeMessageCount <= 0)
+            // Pool.release(cp);
+            // else
+            // setTimeout(() => this._currentProcess && Pool.destroy(this._currentProcess), 1000);
         }
+        this._currentProcess = null;
         if (this.next) this.next.complete();
+
+// console.log(this._isShuttingDown || (this._isComplete && this._currentProcess === null));
+//         if (this._isShuttingDown || (this._isComplete && this._currentProcess === null)) {
+//             if (this.next) this.next.complete();
+//             return;
+//         }
+
+        // this._isShuttingDown = true;
+
+        // let id = setTimeout(() => {
+        //     if (this._activeMessageCount <= 0) {
+        //         clearTimeout(id);
+        //         this._isComplete = true;
+        //         if (this._currentProcess) {
+        //             if (this._activeMessageCount <= 0)
+        //                 Pool.release(this._currentProcess);
+        //             else
+        //                 Pool.destroy(this._currentProcess);
+        //             this._currentProcess = null;
+        //         }
+        //         if (this.next) this.next.complete();
+        //     }
+        // }, 10);
     }
 
     public run (accumulator: I, type: TryType, callback: (v: Either<Error, O>) => void): void {
 
+        if (this._isShuttingDown) return;
+
         if (accumulator === Pool.UNDEFINED as any) {
-            let id = setTimeout(() => {
-                if (this._activeMessageCount <= 0) {
-                    clearTimeout(id);
-                    this._currentProcess = null;
-                    this._isComplete = true;
-                    if (this.next) this.next.run(Pool.UNDEFINED as any, type, callback);
-                    else callback(Pool.UNDEFINED as any);
-                }
-            }, 10);
+            this._isShuttingDown = true;
+            this._currentProcess = null;
+            if (this._activeMessageCount <= 0) {
+                if (this.next) this.next.run(Pool.UNDEFINED as any, type, callback);
+                else callback(Pool.UNDEFINED as any);
+            } else {
+                let id = setTimeout(() => {
+                    if (this._activeMessageCount <= 0) {
+                        clearTimeout(id);
+                        if (this.next) this.next.run(Pool.UNDEFINED as any, type, callback);
+                        else callback(Pool.UNDEFINED as any);
+                    }
+                }, 10);
+            }
             return;
         }
 
+        if (this._isComplete) return;
         this._activeMessageCount++;
-        // console.log(this._activeMessageCount);
 
         // Send the user function response down the flow, or send final response.
         const onNext = (r: O) => {
 
             this._activeMessageCount = Math.max(0, this._activeMessageCount - 1);
-            // console.log(this._activeMessageCount);
-            if (this._isComplete) return;
-
-            // if (r === Pool.UNDEFINED as any) {
-            //     if (this.next) this.next.run(Pool.UNDEFINED as any, type, callback);
-            //     else callback(Pool.UNDEFINED as any);
-            //     return;
-            // }
+            // if (this._isComplete) return;
 
             if (this.next)
                 this.next.run(r, type, callback);
@@ -415,8 +453,7 @@ class TryFork  <I, O> extends TryLocal<I, O> {
         // Send the error as the final response, skipping all subsequent user funtions.
         const onFailure = (e: Error) => {
             this._activeMessageCount = Math.max(0, this._activeMessageCount - 1);
-            // console.log(this._activeMessageCount);
-            if (this._isComplete) return;
+            // if (this._isComplete) return;
             callback(Either.left<Error, O>(e));
         };
 
@@ -434,20 +471,20 @@ class TryFork  <I, O> extends TryLocal<I, O> {
 
                     // Listen for user function responses from the child process.
                     cp.addListener ((r: Either<Error, O>) => {
-                        // setImmediate(() => {
-                            // Send the user function response down the flow.
-                            if (r instanceof Either)
-                                r.isRight() ? onNext(r.getRight()) : onFailure(r.getLeft());
-                            else if (type === "subscription")
-                                onNext(Pool.UNDEFINED as any);
+                        // Send the user function response down the flow.
+                        if (r instanceof Either)
+                            r.isRight() ? onNext(r.getRight()) : onFailure(r.getLeft());
+                        else if (type === "subscription")
+                            onNext(Pool.UNDEFINED as any);
 
-                            if (cp.isDestroyable) {
-                                this._currentProcess = null;
-                            } else if (cp.isComplete) {
-                                this._currentProcess = null;
-                                this._isComplete = true;
-                            }
-                        // });
+                        // Tells state of child process and that pool released or destroyed.
+                        if (cp.isDestroyable) {
+                            this._currentProcess = null;
+                        } else if (cp.isComplete) {
+                            this._isShuttingDown = true;
+                            this._isComplete = true;
+                            this._currentProcess = null;
+                        }
                     });
 
                     // Send the user function to the child process for execution.

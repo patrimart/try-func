@@ -48,29 +48,18 @@ class ChildProcess implements IChildProcess {
 
         // Error, data, isDestroyable, isComplete
         this._child.on("message", (m: [string, any, boolean, boolean]) => {
-// console.log("EMIT1 =>", m);
 
             // If the emitter is gone, release or destroy has been invoked.
             // Do not attempt to send additional repsonses. Indicates a problem.
             if (this._emitter) {
 
-                // this._isDestroyable = m[2];
-                // this._isComplete = m[3];
-
                 // If error or data, send the response and prompt for the next.
                 if (m[0] !== UNDEFINED) {
                     this._emitter(Either.left<Error, any>(new Error(m[0])));
                 }
-                // TODO Would like to ignore if undefined.
                 else if (m[1] !== UNDEFINED) {
                     this._emitter(Either.right<Error, any>(m[1]));
                 }
-                else {
-                    // console.log("===========>", m);
-                    // let e = this._emitter;
-                    // e(UNDEFINED as any);
-                }
-// console.log("EMIT2 =>", m);
 
                 // If complete or destroyable, release or destroy the process and inform the Try.
                 if (m[3]) {
@@ -83,8 +72,7 @@ class ChildProcess implements IChildProcess {
             }
             // Log error for attempting to send responses after complete or destroy.
             else {
-                // console.log("emitter nulled:", m[1]);
-                if (m[1] === UNDEFINED as any) return; // log.info("UNDEFINED emitted after emitter nulled in child_context_pool:84.")
+                if (m[1] === UNDEFINED as any) return;
                 log.info(`The following message was received from a child process that has been released back to ` +
                     `the pool (${this._isComplete}) or scheduled for destruction (${this._isDestroyable}). ` +
                     `This generally indicates a misbehaving user function.`);
@@ -129,9 +117,11 @@ class ChildProcess implements IChildProcess {
      * @param {TryFunction<T, U>} func - the user function
      * @param {any} data - the data to pass to the user function
      * @param {string} callerFileName - the origin of the user function
+     * @returns true, if this child process is accepting messages.
      */
-    public send <T, U> (func: TryFunction<T, U>, data: any, callerFileName: string, type: TryType): void {
+    public send <T, U> (func: TryFunction<T, U>, data: any, callerFileName: string, type: TryType): boolean {
         if (this._child) this._child.send({func: func.toString(), data, callerFileName, type});
+        return !! this._child;
     }
 
     /**
@@ -148,7 +138,6 @@ class ChildProcess implements IChildProcess {
     public release (): void {
         if (this._emitter && ! this._isComplete) this._emitter(UNDEFINED as any);
         this._isComplete = true;
-        // console.log("RELEASE");
         this._emitter = null;
     }
 
@@ -158,7 +147,6 @@ class ChildProcess implements IChildProcess {
     public destroy (): void {
         this._isDestroyable = true;
         this.release();
-        // console.log("DESTROY");
         if (this._child) {
             this._child.removeAllListeners();
             this._child.kill();
@@ -184,8 +172,8 @@ function Singleton (): Pool<IChildProcess> {
         name              : `child_context_pool_${Math.random().toString(36).substr(2)}`,
         create            : (callback) => callback(null, new ChildProcess()),
         destroy           : (cp) => cp.destroy(),
-        max               : +process.env.NODE_TRY_FORK_POOL_MAX || os.cpus().length * 2,
-        min               : +process.env.NODE_TRY_FORK_POOL_MIN || 2,
+        max               : 2, // +process.env.NODE_TRY_FORK_POOL_MAX || os.cpus().length * 2,
+        min               : 1, // +process.env.NODE_TRY_FORK_POOL_MIN || 2,
         refreshIdle       : true,
         idleTimeoutMillis : +process.env.NODE_TRY_FORK_POOL_IDLE || 9000,
         reapIntervalMillis: +process.env.NODE_TRY_FORK_POOL_REAP || 5000,

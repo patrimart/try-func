@@ -12,10 +12,10 @@ for (var i in files) {
         wordCount += content.split(' ').length;
     }
 }
-// console.log("Official word count:", wordCount);
+console.log("Official word count:", wordCount);
 
 
-var counter = 10;
+var counter = 2;
 while(counter--) {
 
     describe('Docs Examples', function () {
@@ -96,6 +96,26 @@ while(counter--) {
                         // console.log("Total word count: " + totalCount);
                         done();
                     }
+                }
+            );
+        });
+
+        it('subscribe example should emit 9 values', function (done) {
+
+            var subscription = Try.ofFork(() => {
+                var counter2 = 0;
+                setInterval(() => Next(counter2++), 100);
+                // while (counter2++ < 20) Next(counter2);
+            })
+            .subscribe(
+                next => {
+                    // console.log("Next:", next);
+                    if (next >= 10) subscription.unsubscribe();
+                },
+                err => console.log("An unexpected error:", err),
+                () => {
+                    // console.log("Complete");
+                    done();
                 }
             );
         });

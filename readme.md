@@ -26,10 +26,11 @@ Try.ofFork(() => {
     var fs = require('fs');
     return fs.readFileSync(__dirname + '/path/to/filename.txt', 'utf8');
 }).andThenFork(function* (fileContent) {
+    var asyncCountWords = require('../utils/asyncCountWords');
     var wordCount = yield asyncCountWords(fileContent);
     return wordCount;
 })
-.get().then(result => console.log(result.get());
+.get().then(result => console.log(result.get()));
 
 ```
 
@@ -47,6 +48,7 @@ Try.ofFork<number>(() => {
 })
 // Pass the previous result into another child process.
 .andThenFork<string, number>(function* (fileContent) {
+    var asyncCountWords = require('../utils/asyncCountWords');
     // Try supports generator/yield to flatten out Promise handling.
     var wordCount: number = yield asyncCountWords(fileContent);
     return wordCount;
@@ -70,12 +72,12 @@ Try.ofFork(function* () {
         /* Return the content of a file in Promise. */
     }
     var files = yield* listFiles(__dirname + "/path/to/files", "utf8");
-    files
-        .filter(f => fs.stat(f).isFile())
-        .forEach(f => {
-            var content = yield* readFile(f);
+    for (var i in files) {
+        if (fs.statSync(__dirname + "/path/to/files/" + files[i]).isFile()) {
+            var content = yield* readFile(__dirname + "/path/to/files/" + files[i]);
             Next(content);
-        });
+        }
+    }
     Complete();
 }).andThenFork((fileContent) => {
     var wordCount = countWords(fileContent);

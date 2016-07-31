@@ -18,12 +18,14 @@ let failSendCount = 0;
 // Listen for "REQUEST_NEXT_ITEM" messages from the parent process.
 // If available, sends the next queued response.
 process.on("message", function (message: string) {
-    readyToSend = true;
     if (message === "REQUEST_NEXT_ITEM") {
+        readyToSend = true;
         sendItem();
+    } else if (message === "FLUSH_QUEUE") {
+        flush();
     } else {
         // Received a new function, so renew queue.
-        queue = [];
+        clear();
     }
 });
 
@@ -60,7 +62,7 @@ function sendItem (item?: queueItem, callback?: (err: Error) => void) {
 
             queue.unshift(next);
             readyToSend = true;
-            setTimeout(sendItem, 200);
+            setTimeout(() => sendItem(), 200);
         } else {
             failSendCount = Math.max(0, failSendCount - 1);
         }
@@ -70,22 +72,38 @@ function sendItem (item?: queueItem, callback?: (err: Error) => void) {
 
 // Send nothing with complete.
 export function onComplete (callback?: (err: Error) => void) {
-    setImmediate(() => sendItem([UNDEFINED, UNDEFINED, false, true], callback));
+    sendItem([UNDEFINED, UNDEFINED, false, true], callback);
 }
 
 // Send Either.Right(r).
 export function onNext (r: any, callback?: (err: Error) => void) {
-    setImmediate(() => sendItem([UNDEFINED, r, false, false], callback));
+    sendItem([UNDEFINED, r, false, false], callback);
 }
 
 // Send Either.Left(e) with complete.
 export function onFailure (e: Error, callback?: (err: Error) => void) {
     // log.error(e);
-    setImmediate(() => sendItem([e.message, UNDEFINED, false, true], callback));
+    sendItem([e.message, UNDEFINED, false, true], callback);
 }
 
 // Send Either.Left(e) with destroy.
 export function onFatalException (e: Error, callback?: (err: Error) => void) {
     // log.error(e);
-    setImmediate(() => sendItem([e.message, UNDEFINED, true, false], callback));
+    sendItem([e.message, UNDEFINED, true, false], callback);
+}
+
+// Clear the queue an set it to readyToSend.
+export function clear () {
+    queue = [];
+    readyToSend = true;
+}
+
+// Flush the queue items.
+export function flush (endWithOnComlete?: boolean) {
+    const tempQueue = queue.slice(0);
+    queue = [];
+    while (tempQueue.length) {
+        process.send(tempQueue.shift());
+    }
+    if (endWithOnComlete) process.send([UNDEFINED, UNDEFINED, false, true]);
 }

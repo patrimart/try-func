@@ -19,7 +19,7 @@ const ___compiledScriptCache___: {[hash: string]: any} = {};
 // Listen for messages w/ functions from parent process.
 // Ignore messages to poll queue.
 process.on("message", function (message: any) {
-    if (message === "REQUEST_NEXT_ITEM") return;
+    if (typeof message === "string") return;
     onMessage(message);
 });
 
@@ -32,7 +32,7 @@ process.on("message", function (message: any) {
  * @param {string} type - run-once, subscription, observable
  */
 function onMessage (message: {func: string, data: any, callerFileName: string, type: string}) {
-    // message.type = "subscription";
+
     let isComplete = false;
 
     function onFailure (err: Error) {
@@ -42,27 +42,27 @@ function onMessage (message: {func: string, data: any, callerFileName: string, t
     }
 
     function onComplete (r?: any) {
-        onNext(r, true);
+        isComplete = true;
+        onNext(r, true, true);
     }
 
-    function onNext (r: any, doComplete?: boolean) {
+    function onNext (r: any, doComplete = false, isRucursive = false) {
         // console.log("NEXT =>", r, doComplete);
         // Harshly indicate that a user function has invoked callbacks after complete has been indicated.
-        if (isComplete) return Queue.onFatalException(new Error("Complete has already been invoked."));
+        if (isComplete && ! isRucursive) return Queue.onFatalException(new Error("Complete has already been invoked."));
 
         process.removeListener("unhandledRejection", onFailure);
 
         // Handle many different responses from the user functions.
-        if      (r instanceof Either.Right) onNext(r.get(), doComplete);
+        if      (r instanceof Either.Right) onNext(r.get(), doComplete, true);
         else if (r instanceof Either.Left)  onFailure(r.getLeft() instanceof Error ? r.getLeft() : new ReferenceError(String(r.getLeft())))
-        else if (r instanceof Option.Some)  onNext(r.get(), doComplete);
+        else if (r instanceof Option.Some)  onNext(r.get(), doComplete, true);
         else if (r instanceof Option.None)  onFailure(new ReferenceError("This option is None."));
-        else if (r instanceof Promise)      r.then((v: any) => onNext(v, doComplete)).catch((e: Error) => onFailure(e))
+        else if (r instanceof Promise)      r.then((v: any) => onNext(v, doComplete, true)).catch((e: Error) => onFailure(e))
         else {
             if (r !== undefined) Queue.onNext(r);
             // This "onComplete" code here prevents a Promise async issue.
             if (doComplete) {
-                isComplete = true;
                 Queue.onComplete();
             }
         }
